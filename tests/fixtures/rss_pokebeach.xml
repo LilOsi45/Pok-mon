@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+  <title>PokéBeach.com</title>
+  <link>https://www.pokebeach.com</link>
+  <item>
+    <title>"Mega Evolution" Expansion Officially Revealed, Launches November 14, 2025!</title>
+    <link>https://www.pokebeach.com/2025/07/mega-evolution-expansion-revealed</link>
+    <guid>https://www.pokebeach.com/?p=111111</guid>
+    <pubDate>Tue, 15 Jul 2025 14:00:00 +0000</pubDate>
+    <description>The next Pokémon TCG expansion has been revealed with new Mega Evolution mechanics. Booster boxes and Elite Trainer Boxes hit shelves worldwide.</description>
+    <media:content url="https://www.pokebeach.com/news/mega-evolution.jpg" type="image/jpeg"/>
+  </item>
+  <item>
+    <title>Player Spotlight: Regional Championships Interview</title>
+    <link>https://www.pokebeach.com/2025/07/player-spotlight</link>
+    <guid>https://www.pokebeach.com/?p=222222</guid>
+    <pubDate>Mon, 14 Jul 2025 10:00:00 +0000</pubDate>
+    <description>We sat down with the regional champion to talk deck techs.</description>
+  </item>
+  <item>
+    <title>One Piece Card Game "OP-12" Booster Set Announced for Europe</title>
+    <link>https://www.pokebeach.com/2025/07/op12-announced</link>
+    <guid>https://www.pokebeach.com/?p=333333</guid>
+    <pubDate>Sun, 13 Jul 2025 09:00:00 +0000</pubDate>
+    <description>Bandai announced the OP-12 booster expansion; preorder starts soon.</description>
+  </item>
+</channel>
+</rss>

@@ -1,0 +1,18 @@
+{
+  "product": {
+    "idProduct": 123456,
+    "enName": "Scarlet & Violet Booster Box",
+    "locName": "Karmesin & Purpur Display",
+    "image": "//static.cardmarket.com/img/abc/items/1/SV/123456.jpg",
+    "website": "/en/Pokemon/Products/Booster-Boxes/Scarlet-Violet-Booster-Box",
+    "countArticles": 87,
+    "countFoils": 0,
+    "priceGuide": {
+      "SELL": 132.5,
+      "LOW": 119.9,
+      "LOWEX": 121.0,
+      "AVG": 138.75,
+      "TREND": 128.4
+    }
+  }
+}

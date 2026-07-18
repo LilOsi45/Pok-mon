@@ -1,0 +1,34 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        INSTALL_PLAYWRIGHT: "true"   # set "false" for a slim image without Chromium
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional Postgres — enable with:  docker compose --profile postgres up -d
+  # and set in .env: DATABASE_URL=postgresql+asyncpg://tcg:tcg@db:5432/tcg
+  db:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tcg
+      POSTGRES_PASSWORD: tcg
+      POSTGRES_DB: tcg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
