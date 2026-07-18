@@ -8,9 +8,11 @@ import os
 
 import httpx
 
+from app.config import get_settings
 from app.events import Event
 from app.models import EventType, Game
 from app.notify.base import Notifier, NotifierNotConfigured, NotifyError
+from app.shops import other_shop_links
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +71,17 @@ def build_embed(event: Event) -> dict:
         )
     if event.url and event.is_stock_event:
         embed["fields"].append({"name": "Buy", "value": f"[Open product page]({event.url})"})
+    if event.is_stock_event and get_settings().show_other_shops:
+        # product search across the other big (Trustpilot-vetted) shops
+        query = event.message or event.title.split(": ", 1)[-1]
+        parts: list[str] = []
+        for name, url in other_shop_links(query, event.game, exclude_url=event.url):
+            link = f"[{name}]({url})"
+            if sum(len(p) + 3 for p in parts) + len(link) > 1000:  # field limit is 1024
+                break
+            parts.append(link)
+        if parts:
+            embed["fields"].append({"name": "Auch checken", "value": " · ".join(parts)})
     return embed
 
 

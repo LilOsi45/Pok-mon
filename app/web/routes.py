@@ -269,6 +269,22 @@ async def news_page(
     )
 
 
+@protected.get("/shops", response_class=HTMLResponse)
+async def shops_page(request: Request, q: str = ""):
+    from dataclasses import asdict
+
+    from app.shops import SHOP_CATALOG, search_url
+
+    shops = []
+    for shop in SHOP_CATALOG:
+        row = asdict(shop)
+        row["search_link"] = search_url(shop, q) if q else ""
+        shops.append(row)
+    return templates.TemplateResponse(
+        request, "shops.html", {"active": "shops", "shops": shops, "q": q.strip()}
+    )
+
+
 @protected.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(
     request: Request, session: AsyncSession = Depends(get_session), page: int = 1

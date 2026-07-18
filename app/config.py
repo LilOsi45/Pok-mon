@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     per_domain_concurrency: int = 1
     respect_robots_txt: bool = True
 
+    # --- notifications: append search links to other big shops on restock alerts ---
+    show_other_shops: bool = True
+
     # --- scheduling defaults ---
     default_poll_interval_seconds: int = 300  # 5 min
     default_cooldown_seconds: int = 1800  # 30 min between notifications per watch

@@ -45,11 +45,12 @@ def test_query_params_change_signature():
         timestamp="1700000000",
     )
     base = "https://api.cardmarket.com/ws/v2.0/output.json/products/find"
-    sig = lambda url: re.search(
-        r'oauth_signature="([^"]+)"', build_oauth1_header("GET", url, **kwargs)
-    ).group(
-        1
-    )  # noqa: E731
+
+    def sig(url: str) -> str:
+        return re.search(
+            r'oauth_signature="([^"]+)"', build_oauth1_header("GET", url, **kwargs)
+        ).group(1)
+
     assert sig(f"{base}?search=foo") != sig(f"{base}?search=bar")
     # realm excludes the query string
     assert build_oauth1_header("GET", f"{base}?search=foo", **kwargs).startswith(

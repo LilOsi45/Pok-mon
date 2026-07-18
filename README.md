@@ -169,6 +169,19 @@ prefer an official API (like Cardmarket's) over scraping when one exists.
 
 ---
 
+## Shop catalog ("Auch checken" links)
+
+`app/shops.py` ships a curated catalog of major EU Pokémon/One Piece retailers
+(dedicated TCG shops with established Trustpilot profiles — Card Corner,
+Games Island, Fantasywelt, Gate to the Games, CardsRfun, TCG-Trade,
+Cardmarket — plus Amazon.de, MediaMarkt, Saturn, Müller, Smyths, Kaufland).
+
+- Every **restock/new-listing alert** gets an "Auch checken" field with
+  product-search links across the other catalog shops (disable with
+  `SHOW_OTHER_SHOPS=false`).
+- The dashboard **Shops** page lists the catalog with Trustpilot links and a
+  search box that opens the product search on every shop at once.
+
 ## News sources
 
 Config-driven in `config.yaml`; three source types:

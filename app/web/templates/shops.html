@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Shops · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Große Shops</h1>
+
+<div class="card">
+  <form method="get" action="/shops" class="form-grid" style="grid-template-columns: 1fr auto; align-items:end">
+    <div>
+      <label for="q">Produkt in allen Shops suchen</label>
+      <input id="q" name="q" placeholder="z. B. OP-12 Booster Display" value="{{ q }}">
+    </div>
+    <div class="form-actions" style="margin-top:0">
+      <button class="btn btn-primary" type="submit">Suchen</button>
+    </div>
+  </form>
+  <p class="muted small" style="margin-bottom:0">
+    Kuratierte Liste großer Pokémon-/One-Piece-Händler (etablierte Trustpilot-Profile, 50+ Bewertungen).
+    Diese Shops werden bei jedem Restock-Alarm als „Auch checken“-Links mitgeschickt.
+  </p>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Shop</th><th>Info</th><th>Trustpilot</th><th style="text-align:right">Links</th></tr>
+      </thead>
+      <tbody>
+        {% for shop in shops %}
+        <tr>
+          <td>
+            <div class="cell-label"><a href="{{ shop.url }}" target="_blank" rel="noopener">{{ shop.name }}</a></div>
+            <div class="cell-sub">{{ shop.domain }}</div>
+          </td>
+          <td class="muted small">{{ shop.note or "—" }}</td>
+          <td>
+            {% if shop.trustpilot_url %}
+            <a class="btn btn-sm" href="{{ shop.trustpilot_url }}" target="_blank" rel="noopener">Bewertungen</a>
+            {% else %}<span class="muted small">—</span>{% endif %}
+          </td>
+          <td>
+            <div style="display:flex; gap:0.35rem; justify-content:flex-end">
+              {% if q %}
+              <a class="btn btn-sm btn-primary" href="{{ shop.search_link }}" target="_blank" rel="noopener">„{{ q[:24] }}“ suchen</a>
+              {% endif %}
+              <a class="btn btn-sm" href="{{ shop.url }}" target="_blank" rel="noopener">Öffnen</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
