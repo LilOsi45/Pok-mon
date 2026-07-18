@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Watches · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Watches</h1>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th><th>Game</th><th>Status</th><th>Price</th>
+          <th>Last check</th><th>Last in stock</th><th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="watch-rows" hx-get="/watches/table" hx-trigger="every 30s" hx-swap="innerHTML">
+        {% include "_watch_rows.html" %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" id="watch-form-slot">
+  {% include "_watch_form.html" %}
+</div>
+{% endblock %}

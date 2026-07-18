@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TCG Tracker{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/holo.css">
+  <script src="/static/js/htmx.min.js" defer></script>
+</head>
+<body>
+{% if hide_nav %}
+  {% block bare %}{% endblock %}
+{% else %}
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">TCG Tracker<small>Holo Foil Monitor</small></div>
+    <a class="nav-link {{ 'active' if active == 'watches' }}" href="/watches">Watches</a>
+    <a class="nav-link {{ 'active' if active == 'news' }}" href="/news">News feed</a>
+    <a class="nav-link {{ 'active' if active == 'notifications' }}" href="/notifications">Notifications</a>
+    <a class="nav-link {{ 'active' if active == 'settings' }}" href="/settings">Settings</a>
+    <form method="post" action="/logout">
+      <button class="btn btn-ghost btn-sm" type="submit">Log out</button>
+    </form>
+  </aside>
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endif %}
+</body>
+</html>

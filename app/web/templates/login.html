@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Login · TCG Tracker{% endblock %}
+{% block bare %}
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="brand">TCG Tracker<small>Holo Foil Monitor</small></div>
+    {% if error %}<p class="fail small">{{ error }}</p>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="password">Password</label>
+      <input id="password" type="password" name="password" autofocus required>
+      <div class="form-actions" style="justify-content:center">
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Settings · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Settings</h1>
+
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<div class="stat-grid">
+  <div class="card">
+    <h2>Notifiers</h2>
+    {% for n in notifiers %}
+    <div class="kv">
+      <span class="k">{{ n.name }} <span class="muted">({{ n.type }})</span></span>
+      <span>{{ n.routes|join(', ') }}</span>
+    </div>
+    {% else %}
+    <div class="empty">No notifiers configured.<br>Add one in <code>config.yaml</code> or set <code>DISCORD_WEBHOOK_URL</code>.</div>
+    {% endfor %}
+    <form method="post" action="/settings/test-notification" class="form-actions">
+      <button class="btn btn-primary" type="submit">Send test notification</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>News sources</h2>
+    {% for s in news_sources %}
+    <div class="kv">
+      <span class="k">{{ s.name }} <span class="muted">({{ s.type }})</span></span>
+      <span>{{ 'on' if s.enabled else 'off' }}</span>
+    </div>
+    {% else %}
+    <div class="empty">No news sources — add them in <code>config.yaml</code>.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Runtime</h2>
+  {% for key, value in settings_view.items() %}
+  <div class="kv"><span class="k">{{ key }}</span><span>{{ value }}</span></div>
+  {% endfor %}
+  <hr class="holo-divider">
+  <p class="muted small">
+    Secrets live in <code>.env</code>; watches, news sources and webhook routing in <code>config.yaml</code>.
+    Restart the app (or container) after changing either file.
+  </p>
+</div>
+{% endblock %}

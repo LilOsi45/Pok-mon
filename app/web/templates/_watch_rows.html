@@ -1,0 +1,41 @@
+{% for w in watches %}
+<tr class="{{ 'row-instock' if w.last_status.value == 'IN_STOCK' and w.enabled }}">
+  <td>
+    <div class="cell-label">{{ w.label }}</div>
+    <div class="cell-sub"><a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.retailer or w.url }}</a></div>
+  </td>
+  <td><span class="badge badge-game {{ w.game.value }}">{{ 'Pokémon' if w.game.value == 'pokemon' else 'One Piece' }}</span></td>
+  <td>
+    {% if not w.enabled %}
+      <span class="badge badge-off">paused</span>
+    {% elif w.last_status.value == 'IN_STOCK' %}
+      <span class="badge badge-instock">In stock</span>
+    {% elif w.last_status.value == 'OUT_OF_STOCK' %}
+      <span class="badge badge-oos">Out of stock</span>
+    {% else %}
+      <span class="badge badge-unknown">Unknown</span>
+    {% endif %}
+    {% if w.last_error %}<div class="cell-sub fail" title="{{ w.last_error }}">{{ w.last_error[:60] }}</div>{% endif %}
+  </td>
+  <td>{% if w.last_price %}{{ '%.2f'|format(w.last_price) }} €{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="muted small" title="{{ w.last_check_at|local_dt }}">{{ w.last_check_at|ago }}</td>
+  <td class="muted small" title="{{ w.last_in_stock_at|local_dt }}">{{ w.last_in_stock_at|ago }}</td>
+  <td>
+    <div style="display:flex; gap:0.35rem; justify-content:flex-end">
+      <button class="btn btn-sm" title="Check now"
+              hx-post="/watches/{{ w.id }}/check" hx-target="#watch-rows" hx-swap="innerHTML">Check</button>
+      <button class="btn btn-sm" title="{{ 'Pause' if w.enabled else 'Resume' }}"
+              hx-post="/watches/{{ w.id }}/toggle" hx-target="#watch-rows" hx-swap="innerHTML">
+        {{ 'Pause' if w.enabled else 'Resume' }}
+      </button>
+      <button class="btn btn-sm" title="Edit"
+              hx-get="/watches/{{ w.id }}/edit" hx-target="#watch-form-slot" hx-swap="innerHTML">Edit</button>
+      <button class="btn btn-sm btn-danger" title="Delete"
+              hx-post="/watches/{{ w.id }}/delete" hx-target="#watch-rows" hx-swap="innerHTML"
+              hx-confirm="Delete watch “{{ w.label }}”?">✕</button>
+    </div>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="7"><div class="empty">No watches yet — add your first one below.</div></td></tr>
+{% endfor %}

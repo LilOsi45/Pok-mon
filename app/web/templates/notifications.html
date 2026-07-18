@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Notifications · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Notification history</h1>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>When</th><th>Event</th><th>Title</th><th>Notifier</th><th>Result</th></tr>
+      </thead>
+      <tbody>
+        {% for n in notifications %}
+        <tr>
+          <td class="muted small" title="{{ n.created_at|local_dt }}">{{ n.created_at|ago }}</td>
+          <td><span class="badge badge-event {{ n.event_type.value }}">{{ n.event_type.value }}</span></td>
+          <td>
+            <div class="cell-label">{% if n.url %}<a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}</div>
+            {% if n.body %}<div class="cell-sub">{{ n.body[:80] }}</div>{% endif %}
+          </td>
+          <td class="muted small">{{ n.notifier }} <span class="muted">({{ n.notifier_type }})</span></td>
+          <td>
+            {% if n.success %}<span class="ok">sent ✓</span>
+            {% else %}<span class="fail" title="{{ n.error }}">failed ✕</span>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty">No notifications sent yet.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="form-actions">
+    {% if page > 1 %}<a class="btn btn-sm" href="/notifications?page={{ page - 1 }}">← Newer</a>{% endif %}
+    {% if notifications|length == 50 %}<a class="btn btn-sm" href="/notifications?page={{ page + 1 }}">Older →</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

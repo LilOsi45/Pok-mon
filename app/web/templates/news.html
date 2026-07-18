@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}News · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Set news</h1>
+
+<div class="card">
+  <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem">
+    <a class="btn btn-sm {{ 'btn-primary' if not game }}" href="/news">All</a>
+    <a class="btn btn-sm {{ 'btn-primary' if game == 'pokemon' }}" href="/news?game=pokemon">Pokémon</a>
+    <a class="btn btn-sm {{ 'btn-primary' if game == 'one_piece' }}" href="/news?game=one_piece">One Piece</a>
+  </div>
+
+  {% for n in news %}
+  <div class="news-item">
+    {% if n.image_url %}<img class="news-thumb" src="{{ n.image_url }}" alt="" loading="lazy">{% else %}<div class="news-thumb"></div>{% endif %}
+    <div>
+      <div class="news-title"><a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.title }}</a></div>
+      <div class="news-meta">
+        <span class="badge badge-game {{ n.game.value }}">{{ 'Pokémon' if n.game.value == 'pokemon' else 'One Piece' }}</span>
+        <span class="badge badge-event">{{ n.status.value }}</span>
+        <span>{{ n.source }} · {{ n.region }}</span>
+        {% if n.release_date %}<span>Release: {{ n.release_date.strftime('%d.%m.%Y') }}</span>{% endif %}
+        <span title="{{ n.first_seen|local_dt }}">seen {{ n.first_seen|ago }}</span>
+      </div>
+      {% if n.summary %}<div class="cell-sub" style="white-space:normal; max-width:640px">{{ n.summary[:220] }}</div>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="empty">Nothing here yet — news sources poll every 30 minutes.</div>
+  {% endfor %}
+
+  <div class="form-actions">
+    {% if page > 1 %}<a class="btn btn-sm" href="/news?game={{ game }}&page={{ page - 1 }}">← Newer</a>{% endif %}
+    {% if news|length == 25 %}<a class="btn btn-sm" href="/news?game={{ game }}&page={{ page + 1 }}">Older →</a>{% endif %}
+  </div>
+</div>
+{% endblock %}
