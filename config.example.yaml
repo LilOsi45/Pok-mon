@@ -1,0 +1,68 @@
+# TCG Tracker configuration (copy to config.yaml and adjust)
+# Secrets (webhook URLs, API keys, SMTP creds) belong in .env — reference them
+# here via *_env keys where supported.
+
+notifiers:
+  # Route patterns are matched against event routes:
+  #   stock events -> ["stock:<game>", "channel:<name>", "watch:<id>"]
+  #   news events  -> ["news:<game>", "source:<name>"]
+  # Patterns: "*" (all), "stock:*" (prefix), "stock:pokemon" (exact),
+  #           "pokemon" (bare word, matches any route segment)
+  - name: pokemon-drops
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_POKEMON }
+    routes: ["stock:pokemon"]
+  - name: one-piece-drops
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_ONEPIECE }
+    routes: ["stock:one_piece"]
+  - name: news-channel
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_NEWS }
+    routes: ["news:*"]
+  # If you only have ONE webhook: delete the three above, keep this one.
+  # (Also works with no notifiers block at all if DISCORD_WEBHOOK_URL is set.)
+  # - name: everything
+  #   type: discord
+  #   config: { webhook_url_env: DISCORD_WEBHOOK_URL }
+  #   routes: ["*"]
+
+news_sources:
+  - name: pokebeach
+    type: rss
+    url: https://www.pokebeach.com/feed
+    game: pokemon
+    region: INT
+  - name: pokemon-official-de
+    type: pokemon_official
+    url: https://www.pokemon.com/de/pokemon-news
+    game: pokemon
+    region: DE
+  - name: onepiece-official-en
+    type: onepiece_official
+    url: https://en.onepiece-cardgame.com/information/
+    game: one_piece
+    region: INT
+
+watches:
+  # Seeded into the DB on first start; manage them in the dashboard afterwards.
+  - game: pokemon
+    label: "Beispiel: Pokémon KP11 Top-Trainer-Box"
+    retailer: Amazon.de
+    url: https://www.amazon.de/dp/B0EXAMPLE0
+    interval_seconds: 420
+    enabled: false  # flip to true (or edit in the dashboard) once you set a real URL
+  - game: one_piece
+    label: "Beispiel: OP-11 Booster Display"
+    retailer: Games Island
+    url: https://www.games-island.eu/example-product
+    interval_seconds: 300
+    enabled: false
+  - game: pokemon
+    label: "Beispiel: Cardmarket Produkt (API)"
+    retailer: Cardmarket
+    url: https://api.cardmarket.com/ws/v2.0/output.json/products/999999
+    adapter: cardmarket
+    detection: { min_articles: 1 }
+    interval_seconds: 600
+    enabled: false
