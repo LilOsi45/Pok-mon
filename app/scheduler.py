@@ -12,7 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 
 from app.config import get_settings, load_file_config
-from app.models import ProductScan, Watch
+from app.models import DiscoveryHunt, ProductScan, Watch
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +115,47 @@ async def sync_scan_jobs() -> None:
             scheduler.remove_job(job.id)
 
 
+def schedule_hunt(hunt: DiscoveryHunt) -> None:
+    """Add or replace the job for a shop-discovery hunt."""
+    from app.discovery import run_hunt_by_id
+
+    scheduler = get_scheduler()
+    job_id = f"hunt:{hunt.id}"
+    if not hunt.enabled:
+        remove_hunt_job(hunt.id)
+        return
+    interval = max(3600, hunt.interval_seconds or 21600)  # searches stay rare
+    scheduler.add_job(
+        run_hunt_by_id,
+        IntervalTrigger(seconds=interval, jitter=int(interval * 0.2)),
+        args=[hunt.id],
+        id=job_id,
+        replace_existing=True,
+        name=f"hunt {hunt.id}: {hunt.label}",
+    )
+    log.info("scheduled hunt %s every %ss (±20%% jitter)", hunt.id, interval)
+
+
+def remove_hunt_job(hunt_id: int) -> None:
+    job_id = f"hunt:{hunt_id}"
+    if get_scheduler().get_job(job_id):
+        get_scheduler().remove_job(job_id)
+
+
+async def sync_hunt_jobs() -> None:
+    from app.db import get_sessionmaker
+
+    scheduler = get_scheduler()
+    async with get_sessionmaker()() as session:
+        hunts = (await session.execute(select(DiscoveryHunt))).scalars().all()
+    wanted_ids = {f"hunt:{h.id}" for h in hunts if h.enabled}
+    for hunt in hunts:
+        schedule_hunt(hunt)
+    for job in scheduler.get_jobs():
+        if job.id.startswith("hunt:") and job.id not in wanted_ids:
+            scheduler.remove_job(job.id)
+
+
 def schedule_news_jobs() -> None:
     from app.news.service import poll_source_by_name, run_release_soon_scan
 
@@ -159,6 +200,7 @@ async def start_scheduler() -> None:
     scheduler = get_scheduler()
     await sync_watch_jobs()
     await sync_scan_jobs()
+    await sync_hunt_jobs()
     schedule_news_jobs()
     if not scheduler.running:
         scheduler.start()

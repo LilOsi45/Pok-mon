@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Discovery · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Shop-Discovery</h1>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Suche</th><th>Spiel</th><th>Status</th><th>Letzter Lauf</th><th style="text-align:right">Aktionen</th></tr>
+      </thead>
+      <tbody id="hunt-rows" hx-get="/discovery/table" hx-trigger="every 60s" hx-swap="innerHTML">
+        {% include "_hunt_rows.html" %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Suche anlegen</h2>
+  <form method="post" action="/discovery">
+    <div class="form-grid">
+      <div class="span-2">
+        <label for="h-label">Name</label>
+        <input id="h-label" name="label" required placeholder="z. B. OP-13 Display Suche">
+      </div>
+      <div>
+        <label for="h-game">Spiel</label>
+        <select id="h-game" name="game">
+          {% for value, name in games %}<option value="{{ value }}">{{ name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="h-interval">Intervall (Sek., min. 3600)</label>
+        <input id="h-interval" name="interval_seconds" type="number" min="3600" value="21600">
+      </div>
+      <div class="span-2">
+        <label for="h-query">Suchanfrage (wie bei Google)</label>
+        <input id="h-query" name="query" required placeholder='z. B. "OP-13" booster display kaufen'>
+      </div>
+      <div>
+        <label for="h-priority" style="text-transform:none">Wichtig — @everyone-Ping 🔔</label>
+        <input id="h-priority" name="priority" type="checkbox" style="width:auto">
+      </div>
+    </div>
+    <p class="muted small">
+      Läuft standardmäßig alle 6 Stunden. Jede neue Domain wird nur <em>einmal</em> gemeldet —
+      mit Seriositäts-Check (Impressum, AGB, Zahlungsarten, Trustpilot). Als „verdächtig“
+      eingestufte Seiten landen nur in der Liste unten, nie in Discord.
+    </p>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Suche anlegen</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Gefundene Shops</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Shop</th><th>Produkt</th><th>Einschätzung</th><th>Checks</th><th>Gefunden</th></tr></thead>
+      <tbody>
+        {% for s in sites %}
+        <tr>
+          <td class="cell-label">{{ s.domain }}</td>
+          <td>
+            <div class="cell-sub" style="max-width:280px"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ (s.title or s.url)[:70] }}</a></div>
+            {% if s.price %}<div class="small">{{ '%.2f'|format(s.price) }} €</div>{% endif %}
+          </td>
+          <td>
+            {% if s.verdict == 'trusted' %}<span class="badge badge-instock">wirkt seriös</span>
+            {% elif s.verdict == 'check' %}<span class="badge badge-unknown">selbst prüfen</span>
+            {% else %}<span class="badge badge-off fail">verdächtig</span>{% endif %}
+          </td>
+          <td class="muted small" style="max-width:260px">
+            {% if s.checks.get('impressum') is not none %}Impressum {{ '✓' if s.checks.impressum else '✗' }} · {% endif %}
+            {% if s.checks.get('payment') %}{{ s.checks.payment }} · {% endif %}
+            {% if s.checks.get('trustpilot_rating') %}TP {{ s.checks.trustpilot_rating }}★ ({{ s.checks.get('trustpilot_reviews', 0) }}){% endif %}
+          </td>
+          <td class="muted small" title="{{ s.first_seen|local_dt }}">{{ s.first_seen|ago }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty">Noch nichts gefunden — nach dem ersten Suchlauf erscheinen hier neue Shops.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

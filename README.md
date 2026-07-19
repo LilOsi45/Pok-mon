@@ -189,6 +189,19 @@ prefer an official API (like Cardmarket's) over scraping when one exists.
   priority events, tests and the heartbeat always go through; suppressed ones
   still show up in the history.
 
+## Shop discovery (find NEW shops)
+
+The **Discovery** page runs recurring web searches (Brave Search API when
+`BRAVE_API_KEY` is set, keyless DuckDuckGo fallback otherwise — default every
+6h) for a product query and reports shops that are not in the catalog and were
+never seen before (global per-domain dedupe). Every new domain gets a
+background vetting pass: Impressum/AGB/Datenschutz links, buyer-protected
+payment methods (PayPal/Klarna) vs. prepayment-only, and the Trustpilot
+profile (rating + review count). Verdicts: *trusted* / *check* / *suspicious*.
+Trusted and check-worthy shops are pinged to Discord with the product link and
+the transparent check summary; **suspicious shops never reach Discord** — they
+are only listed in the dashboard. The vetting is a heuristic, not a guarantee.
+
 ## Keyword scanner (new-product discovery)
 
 The **Scanner** page watches shop *listing pages* (category, search or

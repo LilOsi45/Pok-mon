@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     news_poll_interval_seconds: int = 1800  # 30 min
     release_soon_lead_days: int = 7
 
+    # --- shop discovery web search: Brave Search API key (free tier at
+    # https://brave.com/search/api/). Empty = keyless DuckDuckGo fallback. ---
+    brave_api_key: str | None = None
+
     # --- cardmarket API (OAuth 1.0a, https://api.cardmarket.com) ---
     cardmarket_app_token: str | None = None
     cardmarket_app_secret: str | None = None

@@ -56,9 +56,7 @@ async def build_heartbeat_event(session: AsyncSession) -> Event:
     failing_watches = (
         (
             await session.execute(
-                select(Watch)
-                .where(Watch.enabled.is_(True), Watch.last_error.is_not(None))
-                .limit(5)
+                select(Watch).where(Watch.enabled.is_(True), Watch.last_error.is_not(None)).limit(5)
             )
         )
         .scalars()

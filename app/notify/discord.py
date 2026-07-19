@@ -28,6 +28,7 @@ EVENT_COLORS: dict[EventType, int] = {
     EventType.NEW_SET_ANNOUNCED: COLOR_VIOLET,
     EventType.PREORDER_LIVE: COLOR_CYAN,
     EventType.RELEASE_SOON: COLOR_CYAN,
+    EventType.NEW_SHOP_FOUND: COLOR_CYAN,
     EventType.HEARTBEAT: COLOR_VIOLET,
     EventType.TEST: COLOR_VIOLET,
 }
@@ -39,6 +40,7 @@ EVENT_EMOJI: dict[EventType, str] = {
     EventType.NEW_SET_ANNOUNCED: "📣",
     EventType.PREORDER_LIVE: "🛒",
     EventType.RELEASE_SOON: "⏰",
+    EventType.NEW_SHOP_FOUND: "🔎",
     EventType.HEARTBEAT: "✅",
     EventType.TEST: "🧪",
 }

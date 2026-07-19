@@ -14,6 +14,8 @@ from app.config import get_settings, load_file_config
 from app.db import get_session
 from app.events import Event, news_routes, stock_routes
 from app.models import (
+    DiscoveredSite,
+    DiscoveryHunt,
     EventType,
     Game,
     Notification,
@@ -26,8 +28,10 @@ from app.models import (
 from app.monitor.registry import ADAPTER_CLASSES
 from app.notify.service import dispatch_event, load_notifiers
 from app.scheduler import (
+    remove_hunt_job,
     remove_scan_job,
     remove_watch_job,
+    schedule_hunt,
     schedule_scan,
     schedule_watch,
 )
@@ -175,8 +179,17 @@ async def create_watch(
 ):
     watch = Watch()
     _apply_watch_form(
-        watch, game, label, url, retailer, adapter, interval_seconds, cooldown_seconds,
-        channels, price_target, priority,
+        watch,
+        game,
+        label,
+        url,
+        retailer,
+        adapter,
+        interval_seconds,
+        cooldown_seconds,
+        channels,
+        price_target,
+        priority,
     )
     session.add(watch)
     await session.commit()
@@ -214,8 +227,17 @@ async def update_watch(
     if watch is None:
         return HTMLResponse("Not found", status_code=404)
     _apply_watch_form(
-        watch, game, label, url, retailer, adapter, interval_seconds, cooldown_seconds,
-        channels, price_target, priority,
+        watch,
+        game,
+        label,
+        url,
+        retailer,
+        adapter,
+        interval_seconds,
+        cooldown_seconds,
+        channels,
+        price_target,
+        priority,
     )
     await session.commit()
     schedule_watch(watch)
@@ -519,6 +541,115 @@ async def delete_scan(request: Request, scan_id: int, session: AsyncSession = De
 async def scanner_table(request: Request, session: AsyncSession = Depends(get_session)):
     return templates.TemplateResponse(
         request, "_scan_rows.html", {"scans": await _scan_rows(session)}
+    )
+
+
+# ---------------------------------------------------------------------------
+# shop discovery
+# ---------------------------------------------------------------------------
+
+
+async def _hunt_rows(session: AsyncSession) -> list[DiscoveryHunt]:
+    return list(
+        (await session.execute(select(DiscoveryHunt).order_by(DiscoveryHunt.label))).scalars().all()
+    )
+
+
+async def _discovery_context(session: AsyncSession, hunt: DiscoveryHunt | None = None) -> dict:
+    sites = (
+        (
+            await session.execute(
+                select(DiscoveredSite).order_by(desc(DiscoveredSite.first_seen)).limit(30)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "hunt": hunt,
+        "hunts": await _hunt_rows(session),
+        "sites": sites,
+        "games": [
+            (g.value, "Pokémon TCG" if g == Game.POKEMON else "One Piece Card Game") for g in Game
+        ],
+    }
+
+
+@protected.get("/discovery", response_class=HTMLResponse)
+async def discovery_page(request: Request, session: AsyncSession = Depends(get_session)):
+    context = await _discovery_context(session)
+    return templates.TemplateResponse(request, "discovery.html", {"active": "discovery", **context})
+
+
+@protected.get("/discovery/table", response_class=HTMLResponse)
+async def discovery_table(request: Request, session: AsyncSession = Depends(get_session)):
+    return templates.TemplateResponse(
+        request, "_hunt_rows.html", {"hunts": await _hunt_rows(session)}
+    )
+
+
+@protected.post("/discovery")
+async def create_hunt(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    game: str = Form(...),
+    label: str = Form(...),
+    query: str = Form(...),
+    interval_seconds: int = Form(21600),
+    channels: str = Form(""),
+    priority: str = Form(""),
+):
+    hunt = DiscoveryHunt(
+        game=Game(game),
+        label=label.strip(),
+        query=query.strip(),
+        interval_seconds=max(3600, interval_seconds),
+        channels=[c.strip() for c in channels.split(",") if c.strip()],
+        priority=priority == "on",
+    )
+    session.add(hunt)
+    await session.commit()
+    schedule_hunt(hunt)
+    return RedirectResponse("/discovery", status_code=303)
+
+
+@protected.post("/discovery/{hunt_id}/toggle", response_class=HTMLResponse)
+async def toggle_hunt(request: Request, hunt_id: int, session: AsyncSession = Depends(get_session)):
+    hunt = await session.get(DiscoveryHunt, hunt_id)
+    if hunt is None:
+        return HTMLResponse("Not found", status_code=404)
+    hunt.enabled = not hunt.enabled
+    await session.commit()
+    schedule_hunt(hunt)
+    return templates.TemplateResponse(
+        request, "_hunt_rows.html", {"hunts": await _hunt_rows(session)}
+    )
+
+
+@protected.post("/discovery/{hunt_id}/run", response_class=HTMLResponse)
+async def run_hunt_now(
+    request: Request, hunt_id: int, session: AsyncSession = Depends(get_session)
+):
+    from app.discovery import run_hunt
+
+    hunt = await session.get(DiscoveryHunt, hunt_id)
+    if hunt is None:
+        return HTMLResponse("Not found", status_code=404)
+    await run_hunt(session, hunt)
+    return templates.TemplateResponse(
+        request, "_hunt_rows.html", {"hunts": await _hunt_rows(session)}
+    )
+
+
+@protected.post("/discovery/{hunt_id}/delete", response_class=HTMLResponse)
+async def delete_hunt(request: Request, hunt_id: int, session: AsyncSession = Depends(get_session)):
+    hunt = await session.get(DiscoveryHunt, hunt_id)
+    if hunt is not None:
+        await session.delete(hunt)
+        await session.commit()
+        remove_hunt_job(hunt_id)
+    return templates.TemplateResponse(
+        request, "_hunt_rows.html", {"hunts": await _hunt_rows(session)}
     )
 
 

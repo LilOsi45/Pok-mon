@@ -38,8 +38,11 @@ class TestHeartbeat:
     async def test_failing_watch_listed(self, session):
         session.add(
             Watch(
-                game=Game.POKEMON, label="Kaputte Watch", url="https://x/p",
-                enabled=True, last_error="robots.txt disallows",
+                game=Game.POKEMON,
+                label="Kaputte Watch",
+                url="https://x/p",
+                enabled=True,
+                last_error="robots.txt disallows",
             )
         )
         await session.commit()
@@ -74,8 +77,11 @@ class TestQuietHours:
 class TestPriorityPayload:
     def _event(self, priority: bool) -> Event:
         return Event(
-            type=EventType.BACK_IN_STOCK, game=Game.POKEMON,
-            title="Back in stock: X", priority=priority, routes=["stock:pokemon"],
+            type=EventType.BACK_IN_STOCK,
+            game=Game.POKEMON,
+            title="Back in stock: X",
+            priority=priority,
+            routes=["stock:pokemon"],
         )
 
     def test_priority_mentions_everyone(self):

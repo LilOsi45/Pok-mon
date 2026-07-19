@@ -1,0 +1,28 @@
+{% for h in hunts %}
+<tr>
+  <td>
+    <div class="cell-label">{{ h.label }}{% if h.priority %} <span title="Wichtig">🔔</span>{% endif %}</div>
+    <div class="cell-sub">Suche: „{{ h.query }}“</div>
+  </td>
+  <td><span class="badge badge-game {{ h.game.value }}">{{ 'Pokémon' if h.game.value == 'pokemon' else 'One Piece' }}</span></td>
+  <td>
+    {% if not h.enabled %}<span class="badge badge-off">pausiert</span>
+    {% elif h.last_error %}<span class="badge badge-off fail" title="{{ h.last_error }}">Fehler</span>
+    {% else %}<span class="badge badge-event">aktiv</span>{% endif %}
+    {% if h.last_error %}<div class="cell-sub fail">{{ h.last_error[:60] }}</div>{% endif %}
+  </td>
+  <td class="muted small" title="{{ h.last_run_at|local_dt }}">{{ h.last_run_at|ago }}</td>
+  <td>
+    <div style="display:flex; gap:0.35rem; justify-content:flex-end">
+      <button class="btn btn-sm" hx-post="/discovery/{{ h.id }}/run" hx-target="#hunt-rows" hx-swap="innerHTML">Jetzt suchen</button>
+      <button class="btn btn-sm" hx-post="/discovery/{{ h.id }}/toggle" hx-target="#hunt-rows" hx-swap="innerHTML">
+        {{ 'Pause' if h.enabled else 'Start' }}
+      </button>
+      <button class="btn btn-sm btn-danger" hx-post="/discovery/{{ h.id }}/delete" hx-target="#hunt-rows" hx-swap="innerHTML"
+              hx-confirm="Suche „{{ h.label }}“ löschen?">✕</button>
+    </div>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="5"><div class="empty">Noch keine Shop-Suche — leg unten deine erste an.</div></td></tr>
+{% endfor %}

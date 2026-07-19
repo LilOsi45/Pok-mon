@@ -47,6 +47,7 @@ class EventType(enum.StrEnum):
     NEW_SET_ANNOUNCED = "NEW_SET_ANNOUNCED"
     PREORDER_LIVE = "PREORDER_LIVE"
     RELEASE_SOON = "RELEASE_SOON"
+    NEW_SHOP_FOUND = "NEW_SHOP_FOUND"
     HEARTBEAT = "HEARTBEAT"
     TEST = "TEST"
 
@@ -187,6 +188,45 @@ class ScanItem(Base):
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     scan: Mapped[ProductScan] = relationship(back_populates="items")
+
+
+class DiscoveryHunt(Base):
+    """A recurring web search that hunts for NEW shops selling a product."""
+
+    __tablename__ = "discovery_hunts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game: Mapped[Game] = mapped_column(Enum(Game), index=True)
+    label: Mapped[str] = mapped_column(String(255))
+    query: Mapped[str] = mapped_column(Text)  # e.g. "OP-13 booster display kaufen"
+    interval_seconds: Mapped[int] = mapped_column(Integer, default=21600)  # 6h
+    channels: Mapped[list] = mapped_column(JSON, default=list)
+    priority: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    last_error: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class DiscoveredSite(Base):
+    """A shop domain a hunt has found (deduped globally by domain)."""
+
+    __tablename__ = "discovered_sites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), unique=True)
+    game: Mapped[Game] = mapped_column(Enum(Game))
+    hunt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("discovery_hunts.id", ondelete="SET NULL"), default=None
+    )
+    url: Mapped[str] = mapped_column(Text)  # sample product URL from the search hit
+    title: Mapped[str | None] = mapped_column(Text, default=None)
+    price: Mapped[float | None] = mapped_column(Float, default=None)
+    verdict: Mapped[str] = mapped_column(String(20), default="check")  # trusted|check|suspicious
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    checks: Mapped[dict] = mapped_column(JSON, default=dict)  # transparent check results
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Notification(Base):
