@@ -76,7 +76,9 @@ def _apply_result(watch: Watch, result: StockResult) -> None:
 
 
 def _build_event(watch: Watch, result: StockResult, event_type: EventType) -> Event:
-    if event_type == EventType.BACK_IN_STOCK:
+    if result.alert_title:
+        title = f"{result.alert_title}: {watch.label}"
+    elif event_type == EventType.BACK_IN_STOCK:
         title = f"Back in stock: {watch.label}"
     else:
         title = f"New listing: {watch.label}"

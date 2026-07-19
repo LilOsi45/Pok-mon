@@ -289,11 +289,7 @@ async def _scan_rows(session: AsyncSession) -> list[ProductScan]:
 
 async def _scan_context(session: AsyncSession, scan: ProductScan | None = None) -> dict:
     hits = (
-        (
-            await session.execute(
-                select(ScanItem).order_by(desc(ScanItem.first_seen)).limit(15)
-            )
-        )
+        (await session.execute(select(ScanItem).order_by(desc(ScanItem.first_seen)).limit(15)))
         .scalars()
         .all()
     )
@@ -349,7 +345,15 @@ async def create_scan(
 ):
     scan = ProductScan()
     _apply_scan_form(
-        scan, game, label, url, keywords, exclude_keywords, interval_seconds, channels, use_playwright
+        scan,
+        game,
+        label,
+        url,
+        keywords,
+        exclude_keywords,
+        interval_seconds,
+        channels,
+        use_playwright,
     )
     session.add(scan)
     await session.commit()
@@ -386,7 +390,15 @@ async def update_scan(
     if scan is None:
         return HTMLResponse("Not found", status_code=404)
     _apply_scan_form(
-        scan, game, label, url, keywords, exclude_keywords, interval_seconds, channels, use_playwright
+        scan,
+        game,
+        label,
+        url,
+        keywords,
+        exclude_keywords,
+        interval_seconds,
+        channels,
+        use_playwright,
     )
     await session.commit()
     schedule_scan(scan)

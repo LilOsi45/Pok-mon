@@ -49,6 +49,9 @@ class StockResult:
     # Drives NEW_LISTING; parse() should set False only when clearly absent.
     listed: bool = True
     note: str | None = None
+    # Optional adapter-provided notification title (e.g. "Queue ist OFFEN")
+    # overriding the generic "Back in stock: <label>" wording.
+    alert_title: str | None = None
 
 
 class RetailerAdapter(ABC):

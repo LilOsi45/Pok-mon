@@ -33,10 +33,32 @@ FLOOD_CAP = 8  # more than this many new hits in one run -> one summary message
 
 # path fragments that mark navigation/service links, never products
 NAV_MARKERS = (
-    "login", "account", "cart", "warenkorb", "checkout", "wishlist", "merkzettel",
-    "impressum", "datenschutz", "agb", "widerruf", "kontakt", "newsletter",
-    "versand", "zahlung", "hilfe", "faq", "jobs", "blog/", "/blog", "sitemap",
-    "privacy", "terms", "about", "signin", "register",
+    "login",
+    "account",
+    "cart",
+    "warenkorb",
+    "checkout",
+    "wishlist",
+    "merkzettel",
+    "impressum",
+    "datenschutz",
+    "agb",
+    "widerruf",
+    "kontakt",
+    "newsletter",
+    "versand",
+    "zahlung",
+    "hilfe",
+    "faq",
+    "jobs",
+    "blog/",
+    "/blog",
+    "sitemap",
+    "privacy",
+    "terms",
+    "about",
+    "signin",
+    "register",
 )
 
 
@@ -204,7 +226,8 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
         return []
 
     matching = [
-        f for f in found
+        f
+        for f in found
         if keywords_match(f.title, list(scan.keywords or []), list(scan.exclude_keywords or []))
     ]
     existing_keys = set(
@@ -221,8 +244,11 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
         seen_this_run.add(key)
         new_items.append(
             ScanItem(
-                scan_id=scan.id, url=product.url, url_key=key,
-                title=product.title, price=product.price,
+                scan_id=scan.id,
+                url=product.url,
+                url_key=key,
+                title=product.title,
+                price=product.price,
             )
         )
 
@@ -237,7 +263,11 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
     await session.commit()
     log.info(
         "scan %s (%s): %d products on page, %d matching, %d new%s",
-        scan.id, scan.label, len(found), len(matching), len(new_items),
+        scan.id,
+        scan.label,
+        len(found),
+        len(matching),
+        len(new_items),
         " (baseline)" if is_baseline else "",
     )
     if is_baseline or not new_items:

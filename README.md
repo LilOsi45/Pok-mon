@@ -118,6 +118,7 @@ finish it.
 | `games_island` | games-island.eu | ✅ working | dedicated TCG shop |
 | `mueller`, `smyths_de`, `gamestop_de`, `kaufland`, `gameware` | … | 🟡 stub | generic detection + per-shop TODO |
 | `pokemon_center_eu`, `bandai_store` | … | 🟡 stub | need Playwright (anti-bot), TODO inside |
+| `pokemon_center_queue` | pokemoncenter.com | ✅ working | **queue/waiting-room alarm** — pings when the Queue-it waiting room goes live (select via adapter dropdown; detects the queue redirect, not product stock) |
 | `generic` | any other domain | ✅ fallback | JSON-LD → buy-button/sold-out text → price |
 
 Unknown domains automatically get the **generic adapter**, so you can watch

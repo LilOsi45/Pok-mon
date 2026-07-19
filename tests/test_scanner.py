@@ -55,9 +55,7 @@ class TestMatching:
         assert not keywords_match("Pokémon KP12 Top-Trainer-Box", ["pokemon", "display"])
 
     def test_exclude_wins(self):
-        assert not keywords_match(
-            "Pokémon Sleeves 100 Stück", ["pokemon"], exclude=["sleeves"]
-        )
+        assert not keywords_match("Pokémon Sleeves 100 Stück", ["pokemon"], exclude=["sleeves"])
 
 
 def make_scan(**overrides) -> ProductScan:
