@@ -42,6 +42,15 @@
       <label for="f-channels">Channels (comma-sep.)</label>
       <input id="f-channels" name="channels" placeholder="pokemon, hot-drops" value="{{ watch.channels|join(', ') if watch else '' }}">
     </div>
+    <div>
+      <label for="f-price-target">Preisalarm ab (€, optional)</label>
+      <input id="f-price-target" name="price_target" inputmode="decimal" placeholder="z. B. 129,99"
+             value="{{ '%.2f'|format(watch.price_target) if watch and watch.price_target else '' }}">
+    </div>
+    <div>
+      <label for="f-priority" style="text-transform:none">Wichtig — @everyone-Ping 🔔</label>
+      <input id="f-priority" name="priority" type="checkbox" style="width:auto" {{ 'checked' if watch and watch.priority }}>
+    </div>
   </div>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">{{ 'Save changes' if watch else 'Add watch' }}</button>

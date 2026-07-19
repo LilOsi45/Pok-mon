@@ -96,7 +96,38 @@ def _build_event(watch: Watch, result: StockResult, event_type: EventType) -> Ev
         retailer=retailer,
         watch_id=watch.id,
         routes=stock_routes(watch.game, list(watch.channels or [])) + [f"watch:{watch.id}"],
+        priority=watch.priority,
     )
+
+
+def evaluate_price_target(watch: Watch, result: StockResult) -> Event | None:
+    """PRICE_DROP when in stock at/below the target; rearms once the price
+    rises above the target (or the item goes out of stock)."""
+    if watch.price_target is None or result.price is None:
+        return None
+    if result.status == StockStatus.IN_STOCK and result.price <= watch.price_target:
+        if watch.price_target_hit:
+            return None  # already alerted for this dip
+        watch.price_target_hit = True
+        return Event(
+            type=EventType.PRICE_DROP,
+            game=watch.game,
+            title=f"💰 Preisalarm: {watch.label}",
+            message=(
+                f"Jetzt {result.price:.2f} € — Ziel war {watch.price_target:.2f} €."
+                + (f" ({result.title})" if result.title else "")
+            ),
+            url=result.buy_url or watch.url,
+            image_url=result.image_url or watch.last_image_url,
+            price=result.price,
+            currency=result.currency,
+            retailer=watch.retailer or None,
+            watch_id=watch.id,
+            routes=stock_routes(watch.game, list(watch.channels or [])) + [f"watch:{watch.id}"],
+            priority=watch.priority,
+        )
+    watch.price_target_hit = False
+    return None
 
 
 async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
@@ -118,6 +149,16 @@ async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
         event_type = evaluate_transition(watch, result)
         if event_type is not None:
             event = _build_event(watch, result, event_type)
+            # the restock ping already shows the price — arm the target so the
+            # very next check doesn't send a second, redundant price alert
+            if (
+                watch.price_target is not None
+                and result.price is not None
+                and result.price <= watch.price_target
+            ):
+                watch.price_target_hit = True
+        else:
+            event = evaluate_price_target(watch, result)
         _apply_result(watch, result)
         log.info(
             "checked watch %s [%s] -> %s (%s)",

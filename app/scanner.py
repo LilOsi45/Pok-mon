@@ -189,6 +189,7 @@ def _hit_event(scan: ProductScan, item: ScanItem) -> Event:
         price=item.price,
         retailer=domain,
         routes=stock_routes(scan.game, list(scan.channels or [])) + [f"scan:{scan.id}"],
+        priority=scan.priority,
     )
 
 
@@ -203,6 +204,7 @@ def _summary_event(scan: ProductScan, items: list[ScanItem]) -> Event:
         url=scan.url,
         retailer=domain,
         routes=stock_routes(scan.game, list(scan.channels or [])) + [f"scan:{scan.id}"],
+        priority=scan.priority,
     )
 
 

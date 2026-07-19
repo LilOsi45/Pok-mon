@@ -37,6 +37,10 @@
       <label for="s-pw" style="text-transform:none">Browser-Modus (JS-lastige Shops)</label>
       <input id="s-pw" name="use_playwright" type="checkbox" style="width:auto" {{ 'checked' if scan and scan.use_playwright }}>
     </div>
+    <div>
+      <label for="s-priority" style="text-transform:none">Wichtig — @everyone-Ping 🔔</label>
+      <input id="s-priority" name="priority" type="checkbox" style="width:auto" {{ 'checked' if scan and scan.priority }}>
+    </div>
   </div>
   <p class="muted small">
     Der erste Lauf merkt sich still alles, was schon auf der Seite steht — benachrichtigt wird nur, was danach <em>neu</em> dazukommt.

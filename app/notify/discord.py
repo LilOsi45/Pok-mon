@@ -24,18 +24,22 @@ COLOR_MAGENTA = 0xEC4899  # reserved for restock/available alerts
 EVENT_COLORS: dict[EventType, int] = {
     EventType.BACK_IN_STOCK: COLOR_MAGENTA,
     EventType.NEW_LISTING: COLOR_MAGENTA,
+    EventType.PRICE_DROP: COLOR_CYAN,
     EventType.NEW_SET_ANNOUNCED: COLOR_VIOLET,
     EventType.PREORDER_LIVE: COLOR_CYAN,
     EventType.RELEASE_SOON: COLOR_CYAN,
+    EventType.HEARTBEAT: COLOR_VIOLET,
     EventType.TEST: COLOR_VIOLET,
 }
 
 EVENT_EMOJI: dict[EventType, str] = {
     EventType.BACK_IN_STOCK: "🟢",
     EventType.NEW_LISTING: "✨",
+    EventType.PRICE_DROP: "💰",
     EventType.NEW_SET_ANNOUNCED: "📣",
     EventType.PREORDER_LIVE: "🛒",
     EventType.RELEASE_SOON: "⏰",
+    EventType.HEARTBEAT: "✅",
     EventType.TEST: "🧪",
 }
 
@@ -85,6 +89,14 @@ def build_embed(event: Event) -> dict:
     return embed
 
 
+def build_payload(event: Event) -> dict:
+    payload: dict = {"username": "TCG Tracker", "embeds": [build_embed(event)]}
+    if event.priority:  # real phone push with sound, hard to miss
+        payload["content"] = "@everyone"
+        payload["allowed_mentions"] = {"parse": ["everyone"]}
+    return payload
+
+
 class DiscordNotifier(Notifier):
     type = "discord"
 
@@ -99,10 +111,7 @@ class DiscordNotifier(Notifier):
         return url
 
     async def send(self, event: Event) -> None:
-        payload = {
-            "username": "TCG Tracker",
-            "embeds": [build_embed(event)],
-        }
+        payload = build_payload(event)
         url = self._webhook_url()
         async with httpx.AsyncClient(timeout=15) as client:
             for attempt in range(3):

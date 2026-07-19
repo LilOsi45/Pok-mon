@@ -43,9 +43,11 @@ class StockStatus(enum.StrEnum):
 class EventType(enum.StrEnum):
     NEW_LISTING = "NEW_LISTING"
     BACK_IN_STOCK = "BACK_IN_STOCK"
+    PRICE_DROP = "PRICE_DROP"
     NEW_SET_ANNOUNCED = "NEW_SET_ANNOUNCED"
     PREORDER_LIVE = "PREORDER_LIVE"
     RELEASE_SOON = "RELEASE_SOON"
+    HEARTBEAT = "HEARTBEAT"
     TEST = "TEST"
 
 
@@ -72,6 +74,11 @@ class Watch(Base):
     # True once we've observed the product listed at least once (drives NEW_LISTING)
     listing_seen: Mapped[bool] = mapped_column(Boolean, default=False)
     notify_on_first_seen: Mapped[bool] = mapped_column(Boolean, default=False)
+    # priority watches mention @everyone and bypass quiet hours
+    priority: Mapped[bool] = mapped_column(Boolean, default=False)
+    # price alert: ping once when in stock at/below this price (rearms above it)
+    price_target: Mapped[float | None] = mapped_column(Float, default=None)
+    price_target_hit: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
@@ -148,6 +155,7 @@ class ProductScan(Base):
     interval_seconds: Mapped[int] = mapped_column(Integer, default=900)
     channels: Mapped[list] = mapped_column(JSON, default=list)
     use_playwright: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     # first successful check records what's already there without notifying
     baseline_done: Mapped[bool] = mapped_column(Boolean, default=False)

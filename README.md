@@ -170,6 +170,25 @@ prefer an official API (like Cardmarket's) over scraping when one exists.
 
 ---
 
+## Heartbeat, price alerts, priority pings
+
+- **Heartbeat** — a daily "✅ Tracker läuft" message (default 09:15 local time,
+  `HEARTBEAT_HOUR` / `HEARTBEAT_ENABLED`) with 24h stats and any watches or
+  scanners stuck in an error state. Routes as `system:heartbeat` (matched by
+  `*` or `system:*` notifier routes). Silence from the tracker no longer looks
+  like "no restocks".
+- **Price alerts** — set a per-watch price target ("Preisalarm ab"); a
+  `PRICE_DROP` ping fires once when the product is in stock at/below the
+  target and rearms when the price rises above it. Every check already records
+  the price, so the 📈 button on each watch shows a price-history sparkline
+  and recent checks. A restock ping at/below target arms the alert so you
+  don't get two messages for one event.
+- **Priority pings** — tick "Wichtig" on a watch or scanner to have its
+  Discord messages mention `@everyone` (real phone push). Optional
+  `QUIET_HOURS=22-7` suppresses non-priority notifications at night —
+  priority events, tests and the heartbeat always go through; suppressed ones
+  still show up in the history.
+
 ## Keyword scanner (new-product discovery)
 
 The **Scanner** page watches shop *listing pages* (category, search or

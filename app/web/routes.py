@@ -138,7 +138,11 @@ def _apply_watch_form(
     interval_seconds: int,
     cooldown_seconds: int,
     channels: str,
+    price_target: str = "",
+    priority: str = "",
 ) -> None:
+    from app.monitor.detection import parse_german_price
+
     watch.game = Game(game)
     watch.label = label.strip()
     watch.url = url.strip()
@@ -147,6 +151,11 @@ def _apply_watch_form(
     watch.interval_seconds = max(60, interval_seconds)
     watch.cooldown_seconds = max(0, cooldown_seconds)
     watch.channels = [c.strip() for c in channels.split(",") if c.strip()] or [game]
+    new_target = parse_german_price(price_target) if price_target.strip() else None
+    if new_target != watch.price_target:
+        watch.price_target_hit = False  # rearm on target change
+    watch.price_target = new_target
+    watch.priority = priority == "on"
 
 
 @protected.post("/watches")
@@ -161,10 +170,13 @@ async def create_watch(
     interval_seconds: int = Form(300),
     cooldown_seconds: int = Form(1800),
     channels: str = Form(""),
+    price_target: str = Form(""),
+    priority: str = Form(""),
 ):
     watch = Watch()
     _apply_watch_form(
-        watch, game, label, url, retailer, adapter, interval_seconds, cooldown_seconds, channels
+        watch, game, label, url, retailer, adapter, interval_seconds, cooldown_seconds,
+        channels, price_target, priority,
     )
     session.add(watch)
     await session.commit()
@@ -195,12 +207,15 @@ async def update_watch(
     interval_seconds: int = Form(300),
     cooldown_seconds: int = Form(1800),
     channels: str = Form(""),
+    price_target: str = Form(""),
+    priority: str = Form(""),
 ):
     watch = await session.get(Watch, watch_id)
     if watch is None:
         return HTMLResponse("Not found", status_code=404)
     _apply_watch_form(
-        watch, game, label, url, retailer, adapter, interval_seconds, cooldown_seconds, channels
+        watch, game, label, url, retailer, adapter, interval_seconds, cooldown_seconds,
+        channels, price_target, priority,
     )
     await session.commit()
     schedule_watch(watch)
@@ -276,6 +291,55 @@ async def news_page(
     )
 
 
+@protected.get("/watches/{watch_id}/history", response_class=HTMLResponse)
+async def watch_history(
+    request: Request, watch_id: int, session: AsyncSession = Depends(get_session)
+):
+    """Price history sparkline (inline SVG) + recent checks for one watch."""
+    watch = await session.get(Watch, watch_id)
+    if watch is None:
+        return HTMLResponse("Not found", status_code=404)
+    checks = (
+        (
+            await session.execute(
+                select(StockCheck)
+                .where(StockCheck.watch_id == watch_id)
+                .order_by(desc(StockCheck.checked_at))
+                .limit(500)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    checks = list(reversed(checks))  # oldest -> newest
+    priced = [c for c in checks if c.price is not None]
+
+    points = ""
+    min_price = max_price = None
+    if len(priced) >= 2:
+        prices = [c.price for c in priced]
+        min_price, max_price = min(prices), max(prices)
+        span = (max_price - min_price) or 1.0
+        width, height, pad = 600.0, 110.0, 8.0
+        step = (width - 2 * pad) / (len(priced) - 1)
+        points = " ".join(
+            f"{pad + i * step:.1f},{height - pad - (p - min_price) / span * (height - 2 * pad):.1f}"
+            for i, p in enumerate(prices)
+        )
+    return templates.TemplateResponse(
+        request,
+        "_watch_history.html",
+        {
+            "watch": watch,
+            "points": points,
+            "min_price": min_price,
+            "max_price": max_price,
+            "priced_count": len(priced),
+            "recent": list(reversed(checks))[:20],  # newest first for the table
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # keyword scanner
 # ---------------------------------------------------------------------------
@@ -313,6 +377,7 @@ def _apply_scan_form(
     interval_seconds: int,
     channels: str,
     use_playwright: str,
+    priority: str = "",
 ) -> None:
     scan.game = Game(game)
     scan.label = label.strip()
@@ -322,6 +387,7 @@ def _apply_scan_form(
     scan.interval_seconds = max(300, interval_seconds)
     scan.channels = [c.strip() for c in channels.split(",") if c.strip()] or [game]
     scan.use_playwright = use_playwright == "on"
+    scan.priority = priority == "on"
 
 
 @protected.get("/scanner", response_class=HTMLResponse)
@@ -342,6 +408,7 @@ async def create_scan(
     interval_seconds: int = Form(900),
     channels: str = Form(""),
     use_playwright: str = Form(""),
+    priority: str = Form(""),
 ):
     scan = ProductScan()
     _apply_scan_form(
@@ -354,6 +421,7 @@ async def create_scan(
         interval_seconds,
         channels,
         use_playwright,
+        priority,
     )
     session.add(scan)
     await session.commit()
@@ -385,6 +453,7 @@ async def update_scan(
     interval_seconds: int = Form(900),
     channels: str = Form(""),
     use_playwright: str = Form(""),
+    priority: str = Form(""),
 ):
     scan = await session.get(ProductScan, scan_id)
     if scan is None:
@@ -399,6 +468,7 @@ async def update_scan(
         interval_seconds,
         channels,
         use_playwright,
+        priority,
     )
     await session.commit()
     schedule_scan(scan)

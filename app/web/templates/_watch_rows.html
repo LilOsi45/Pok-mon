@@ -1,7 +1,7 @@
 {% for w in watches %}
 <tr class="{{ 'row-instock' if w.last_status.value == 'IN_STOCK' and w.enabled }}">
   <td>
-    <div class="cell-label">{{ w.label }}</div>
+    <div class="cell-label">{{ w.label }}{% if w.priority %} <span title="Wichtig: @everyone-Ping">🔔</span>{% endif %}</div>
     <div class="cell-sub"><a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.retailer or w.url }}</a></div>
   </td>
   <td><span class="badge badge-game {{ w.game.value }}">{{ 'Pokémon' if w.game.value == 'pokemon' else 'One Piece' }}</span></td>
@@ -17,7 +17,10 @@
     {% endif %}
     {% if w.last_error %}<div class="cell-sub fail" title="{{ w.last_error }}">{{ w.last_error[:60] }}</div>{% endif %}
   </td>
-  <td>{% if w.last_price %}{{ '%.2f'|format(w.last_price) }} €{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td>
+    {% if w.last_price %}{{ '%.2f'|format(w.last_price) }} €{% else %}<span class="muted">—</span>{% endif %}
+    {% if w.price_target %}<div class="cell-sub" title="Preisalarm">🎯 {{ '%.2f'|format(w.price_target) }} €</div>{% endif %}
+  </td>
   <td class="muted small" title="{{ w.last_check_at|local_dt }}">{{ w.last_check_at|ago }}</td>
   <td class="muted small" title="{{ w.last_in_stock_at|local_dt }}">{{ w.last_in_stock_at|ago }}</td>
   <td>
@@ -28,6 +31,8 @@
               hx-post="/watches/{{ w.id }}/toggle" hx-target="#watch-rows" hx-swap="innerHTML">
         {{ 'Pause' if w.enabled else 'Resume' }}
       </button>
+      <button class="btn btn-sm" title="Preisverlauf"
+              hx-get="/watches/{{ w.id }}/history" hx-target="#watch-detail-slot" hx-swap="innerHTML">📈</button>
       <button class="btn btn-sm" title="Edit"
               hx-get="/watches/{{ w.id }}/edit" hx-target="#watch-form-slot" hx-swap="innerHTML">Edit</button>
       <button class="btn btn-sm btn-danger" title="Delete"

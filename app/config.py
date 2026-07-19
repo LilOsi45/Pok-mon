@@ -56,6 +56,12 @@ class Settings(BaseSettings):
 
     # --- notifications: append search links to other big shops on restock alerts ---
     show_other_shops: bool = True
+    # Daily "I'm alive" status message (24h stats + failing watches)
+    heartbeat_enabled: bool = True
+    heartbeat_hour: int = 9  # local time (TIMEZONE)
+    # Quiet hours "22-7": non-priority notifications are suppressed in this
+    # local-time window (recorded in history, not sent). Empty = disabled.
+    quiet_hours: str = ""
 
     # --- scheduling defaults ---
     default_poll_interval_seconds: int = 300  # 5 min

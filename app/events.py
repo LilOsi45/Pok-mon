@@ -23,6 +23,8 @@ class Event:
     news_id: int | None = None
     # Routing keys, e.g. ["stock:pokemon", "watch:12"] or ["news:one_piece"].
     routes: list[str] = field(default_factory=list)
+    # Priority events mention @everyone and bypass quiet hours
+    priority: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property

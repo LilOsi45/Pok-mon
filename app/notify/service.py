@@ -1,15 +1,18 @@
-"""Notification dispatch: route events to matching notifiers, persist history."""
+"""Notification dispatch: route events to matching notifiers, persist history,
+and enforce quiet hours (non-priority events are suppressed, not sent)."""
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import load_file_config
+from app.config import get_settings, load_file_config
 from app.events import Event
-from app.models import Notification, NotifierConfig
+from app.models import EventType, Notification, NotifierConfig
 from app.notify.base import Notifier, NotifyError
 from app.notify.discord import DiscordNotifier
 from app.notify.email import EmailNotifier
@@ -50,6 +53,39 @@ async def load_notifiers(session: AsyncSession) -> list[Notifier]:
     return list(notifiers.values())
 
 
+def parse_quiet_hours(spec: str) -> tuple[int, int] | None:
+    """Parse "22-7" into (start_hour, end_hour); None when unset/invalid."""
+    spec = (spec or "").strip()
+    if not spec:
+        return None
+    try:
+        start_raw, end_raw = spec.split("-", 1)
+        start, end = int(start_raw), int(end_raw)
+    except ValueError:
+        log.warning("invalid QUIET_HOURS %r — expected e.g. '22-7', ignoring", spec)
+        return None
+    if not (0 <= start <= 23 and 0 <= end <= 23) or start == end:
+        log.warning("invalid QUIET_HOURS %r — hours must be 0-23 and differ", spec)
+        return None
+    return start, end
+
+
+def is_quiet_hour(spec: str, hour: int) -> bool:
+    window = parse_quiet_hours(spec)
+    if window is None:
+        return False
+    start, end = window
+    if start < end:  # e.g. 13-15
+        return start <= hour < end
+    return hour >= start or hour < end  # wraps midnight, e.g. 22-7
+
+
+def _quiet_now() -> bool:
+    settings = get_settings()
+    now = datetime.now(ZoneInfo(settings.timezone))
+    return is_quiet_hour(settings.quiet_hours, now.hour)
+
+
 async def dispatch_event(session: AsyncSession, event: Event) -> list[Notification]:
     """Send an event to every notifier whose routes match; persist each attempt."""
     records: list[Notification] = []
@@ -57,6 +93,33 @@ async def dispatch_event(session: AsyncSession, event: Event) -> list[Notificati
     matching = [n for n in notifiers if n.matches(event)]
     if not matching:
         log.info("event %s (%s) matched no notifiers", event.type.value, event.title)
+
+    # Quiet hours: suppress non-priority noise (still recorded in history).
+    # Priority events, tests and the daily heartbeat always go through.
+    if (
+        matching
+        and not event.priority
+        and event.type not in (EventType.TEST, EventType.HEARTBEAT)
+        and _quiet_now()
+    ):
+        for notifier in matching:
+            session.add(
+                Notification(
+                    event_type=event.type,
+                    notifier=notifier.name,
+                    notifier_type=notifier.type,
+                    title=event.title,
+                    body=event.message or None,
+                    url=event.url,
+                    watch_id=event.watch_id,
+                    news_id=event.news_id,
+                    success=False,
+                    error=f"unterdrückt (Ruhezeit {get_settings().quiet_hours})",
+                )
+            )
+        await session.commit()
+        log.info("event %s suppressed (quiet hours)", event.type.value)
+        return []
     for notifier in matching:
         record = Notification(
             event_type=event.type,

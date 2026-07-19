@@ -143,6 +143,16 @@ def schedule_news_jobs() -> None:
         replace_existing=True,
         name="release-soon scan",
     )
+    if settings.heartbeat_enabled:
+        from app.heartbeat import send_heartbeat
+
+        scheduler.add_job(
+            send_heartbeat,
+            CronTrigger(hour=max(0, min(23, settings.heartbeat_hour)), minute=15),
+            id="system:heartbeat",
+            replace_existing=True,
+            name="daily heartbeat",
+        )
 
 
 async def start_scheduler() -> None:

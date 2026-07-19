@@ -1,0 +1,44 @@
+<h2>Preisverlauf: {{ watch.label }}</h2>
+{% if points %}
+<div style="margin-bottom:0.5rem">
+  <svg viewBox="0 0 600 110" style="width:100%; max-width:640px; height:auto" role="img" aria-label="Preisverlauf">
+    <defs>
+      <linearGradient id="holo-line" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#8B5CF6"/>
+        <stop offset="50%" stop-color="#2DD4BF"/>
+        <stop offset="100%" stop-color="#EC4899"/>
+      </linearGradient>
+    </defs>
+    <polyline points="{{ points }}" fill="none" stroke="url(#holo-line)" stroke-width="2.5"
+              stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>
+  <div class="muted small">
+    Tief: <strong>{{ '%.2f'|format(min_price) }} €</strong> ·
+    Hoch: <strong>{{ '%.2f'|format(max_price) }} €</strong> ·
+    {{ priced_count }} Preispunkte
+    {% if watch.price_target %} · Ziel: <strong>{{ '%.2f'|format(watch.price_target) }} €</strong>{% endif %}
+  </div>
+</div>
+{% else %}
+<div class="empty">Noch nicht genug Preisdaten — nach ein paar Checks mit erkanntem Preis entsteht hier die Kurve.</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Zeit</th><th>Status</th><th>Preis</th><th>Hinweis</th></tr></thead>
+    <tbody>
+      {% for c in recent %}
+      <tr>
+        <td class="muted small">{{ c.checked_at|local_dt('%d.%m. %H:%M') }}</td>
+        <td>
+          {% if c.status.value == 'IN_STOCK' %}<span class="badge badge-instock">In stock</span>
+          {% elif c.status.value == 'OUT_OF_STOCK' %}<span class="badge badge-oos">Out</span>
+          {% else %}<span class="badge badge-unknown">?</span>{% endif %}
+        </td>
+        <td>{% if c.price %}{{ '%.2f'|format(c.price) }} €{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="muted small">{{ (c.error or '')[:70] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -19,7 +19,16 @@
   </div>
 </div>
 
+<div class="card" id="watch-detail-slot" style="display:none"></div>
+
 <div class="card" id="watch-form-slot">
   {% include "_watch_form.html" %}
 </div>
+
+<script>
+  // show the detail card once htmx loads something into it
+  document.addEventListener('htmx:afterSwap', function (evt) {
+    if (evt.target.id === 'watch-detail-slot') evt.target.style.display = 'block';
+  });
+</script>
 {% endblock %}
