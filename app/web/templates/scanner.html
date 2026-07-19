@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Scanner · TCG Tracker{% endblock %}
+{% block content %}
+<h1 class="page-title">Produkt-Scanner</h1>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Scanner</th><th>Spiel</th><th>Schlagwörter</th><th>Status</th>
+          <th>Letzter Lauf</th><th style="text-align:right">Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="scan-rows" hx-get="/scanner/table" hx-trigger="every 30s" hx-swap="innerHTML">
+        {% include "_scan_rows.html" %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" id="scan-form-slot">
+  {% include "_scan_form.html" %}
+</div>
+
+<div class="card">
+  <h2>Letzte Treffer</h2>
+  {% for hit in hits %}
+  <div class="kv">
+    <span class="k"><a href="{{ hit.url }}" target="_blank" rel="noopener">{{ hit.title[:90] }}</a></span>
+    <span class="muted small" title="{{ hit.first_seen|local_dt }}">{{ hit.first_seen|ago }}</span>
+  </div>
+  {% else %}
+  <div class="empty">Noch keine Treffer — sobald ein Scanner ein neues passendes Produkt findet, taucht es hier auf.</div>
+  {% endfor %}
+</div>
+{% endblock %}

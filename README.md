@@ -169,6 +169,18 @@ prefer an official API (like Cardmarket's) over scraping when one exists.
 
 ---
 
+## Keyword scanner (new-product discovery)
+
+The **Scanner** page watches shop *listing pages* (category, search or
+new-arrivals URLs) instead of single products. Give it a URL plus keywords
+(comma = AND, accent-insensitive, with optional exclude terms) and it notifies
+the moment a **new** matching product shows up — e.g. the first shop listing a
+freshly announced set. The first run silently baselines everything already on
+the page; a sudden flood of hits (layout change) is collapsed into one summary
+message. Parsing uses schema.org ItemList/Product JSON-LD when present, with a
+generic product-link heuristic as fallback; a per-scanner Playwright toggle
+handles JS-heavy shops.
+
 ## Shop catalog ("Auch checken" links)
 
 `app/shops.py` ships a curated catalog of major EU Pokémon/One Piece retailers

@@ -1,0 +1,49 @@
+<h2>{{ 'Scanner bearbeiten' if scan else 'Scanner anlegen' }}</h2>
+<form method="post" action="{{ '/scanner/' ~ scan.id if scan else '/scanner' }}">
+  <div class="form-grid">
+    <div class="span-2">
+      <label for="s-label">Name</label>
+      <input id="s-label" name="label" required placeholder="z. B. Games Island – Pokémon Neuheiten" value="{{ scan.label if scan else '' }}">
+    </div>
+    <div>
+      <label for="s-game">Spiel</label>
+      <select id="s-game" name="game">
+        {% for value, name in games %}
+        <option value="{{ value }}" {{ 'selected' if scan and scan.game.value == value }}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="s-interval">Intervall (Sek., min. 300)</label>
+      <input id="s-interval" name="interval_seconds" type="number" min="300" value="{{ scan.interval_seconds if scan else 900 }}">
+    </div>
+    <div class="span-2">
+      <label for="s-url">Listen-URL (Kategorie-, Such- oder Neuheiten-Seite)</label>
+      <input id="s-url" name="url" type="url" required placeholder="https://shop.de/pokemon/neuheiten" value="{{ scan.url if scan else '' }}">
+    </div>
+    <div>
+      <label for="s-keywords">Schlagwörter (Komma = UND)</label>
+      <input id="s-keywords" name="keywords" required placeholder="pokemon, display" value="{{ scan.keywords|join(', ') if scan else '' }}">
+    </div>
+    <div>
+      <label for="s-exclude">Ausschließen (optional)</label>
+      <input id="s-exclude" name="exclude_keywords" placeholder="sleeves, einzelkarte" value="{{ scan.exclude_keywords|join(', ') if scan else '' }}">
+    </div>
+    <div>
+      <label for="s-channels">Channels (optional)</label>
+      <input id="s-channels" name="channels" placeholder="pokemon" value="{{ scan.channels|join(', ') if scan else '' }}">
+    </div>
+    <div>
+      <label for="s-pw" style="text-transform:none">Browser-Modus (JS-lastige Shops)</label>
+      <input id="s-pw" name="use_playwright" type="checkbox" style="width:auto" {{ 'checked' if scan and scan.use_playwright }}>
+    </div>
+  </div>
+  <p class="muted small">
+    Der erste Lauf merkt sich still alles, was schon auf der Seite steht — benachrichtigt wird nur, was danach <em>neu</em> dazukommt.
+    Alle Schlagwörter müssen im Produktnamen vorkommen („pokemon, display“ trifft „Pokémon KP11 Booster Display“).
+  </p>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{ 'Speichern' if scan else 'Scanner anlegen' }}</button>
+    {% if scan %}<a class="btn btn-ghost" href="/scanner">Abbrechen</a>{% endif %}
+  </div>
+</form>

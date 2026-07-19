@@ -12,7 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 
 from app.config import get_settings, load_file_config
-from app.models import Watch
+from app.models import ProductScan, Watch
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +74,47 @@ async def sync_watch_jobs() -> None:
             scheduler.remove_job(job.id)
 
 
+def schedule_scan(scan: ProductScan) -> None:
+    """Add or replace the polling job for a keyword scanner."""
+    from app.scanner import run_scan_by_id
+
+    scheduler = get_scheduler()
+    job_id = f"scan:{scan.id}"
+    if not scan.enabled:
+        remove_scan_job(scan.id)
+        return
+    interval = max(300, scan.interval_seconds or 900)
+    scheduler.add_job(
+        run_scan_by_id,
+        IntervalTrigger(seconds=interval, jitter=int(interval * 0.2)),
+        args=[scan.id],
+        id=job_id,
+        replace_existing=True,
+        name=f"scan {scan.id}: {scan.label}",
+    )
+    log.info("scheduled scan %s every %ss (±20%% jitter)", scan.id, interval)
+
+
+def remove_scan_job(scan_id: int) -> None:
+    job_id = f"scan:{scan_id}"
+    if get_scheduler().get_job(job_id):
+        get_scheduler().remove_job(job_id)
+
+
+async def sync_scan_jobs() -> None:
+    from app.db import get_sessionmaker
+
+    scheduler = get_scheduler()
+    async with get_sessionmaker()() as session:
+        scans = (await session.execute(select(ProductScan))).scalars().all()
+    wanted_ids = {f"scan:{s.id}" for s in scans if s.enabled}
+    for scan in scans:
+        schedule_scan(scan)
+    for job in scheduler.get_jobs():
+        if job.id.startswith("scan:") and job.id not in wanted_ids:
+            scheduler.remove_job(job.id)
+
+
 def schedule_news_jobs() -> None:
     from app.news.service import poll_source_by_name, run_release_soon_scan
 
@@ -107,6 +148,7 @@ def schedule_news_jobs() -> None:
 async def start_scheduler() -> None:
     scheduler = get_scheduler()
     await sync_watch_jobs()
+    await sync_scan_jobs()
     schedule_news_jobs()
     if not scheduler.running:
         scheduler.start()

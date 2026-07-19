@@ -133,6 +133,54 @@ class SetNews(Base):
     release_soon_notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class ProductScan(Base):
+    """Keyword scanner: watches a listing page (category/search/new-arrivals)
+    and fires when a NEW product matching the keywords appears."""
+
+    __tablename__ = "product_scans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game: Mapped[Game] = mapped_column(Enum(Game), index=True)
+    label: Mapped[str] = mapped_column(String(255))
+    url: Mapped[str] = mapped_column(Text)  # listing page to scan
+    keywords: Mapped[list] = mapped_column(JSON, default=list)  # ALL must match
+    exclude_keywords: Mapped[list] = mapped_column(JSON, default=list)  # ANY excludes
+    interval_seconds: Mapped[int] = mapped_column(Integer, default=900)
+    channels: Mapped[list] = mapped_column(JSON, default=list)
+    use_playwright: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # first successful check records what's already there without notifying
+    baseline_done: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_check_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    last_error: Mapped[str | None] = mapped_column(Text, default=None)
+
+    items: Mapped[list[ScanItem]] = relationship(
+        back_populates="scan", cascade="all, delete-orphan", lazy="noload"
+    )
+
+
+class ScanItem(Base):
+    """A product URL a scanner has already seen (dedupe + hit history)."""
+
+    __tablename__ = "scan_items"
+    __table_args__ = (UniqueConstraint("scan_id", "url_key", name="uq_scan_item"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scan_id: Mapped[int] = mapped_column(
+        ForeignKey("product_scans.id", ondelete="CASCADE"), index=True
+    )
+    url: Mapped[str] = mapped_column(Text)
+    url_key: Mapped[str] = mapped_column(String(500))  # normalized dedupe key
+    title: Mapped[str] = mapped_column(Text)
+    price: Mapped[float | None] = mapped_column(Float, default=None)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    scan: Mapped[ProductScan] = relationship(back_populates="items")
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

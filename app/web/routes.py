@@ -17,13 +17,20 @@ from app.models import (
     EventType,
     Game,
     Notification,
+    ProductScan,
+    ScanItem,
     SetNews,
     StockCheck,
     Watch,
 )
 from app.monitor.registry import ADAPTER_CLASSES
 from app.notify.service import dispatch_event, load_notifiers
-from app.scheduler import remove_watch_job, schedule_watch
+from app.scheduler import (
+    remove_scan_job,
+    remove_watch_job,
+    schedule_scan,
+    schedule_watch,
+)
 from app.web.templating import templates
 
 log = logging.getLogger(__name__)
@@ -266,6 +273,170 @@ async def news_page(
         request,
         "news.html",
         {"active": "news", "news": rows, "game": game, "page": max(1, page)},
+    )
+
+
+# ---------------------------------------------------------------------------
+# keyword scanner
+# ---------------------------------------------------------------------------
+
+
+async def _scan_rows(session: AsyncSession) -> list[ProductScan]:
+    return list(
+        (await session.execute(select(ProductScan).order_by(ProductScan.label))).scalars().all()
+    )
+
+
+async def _scan_context(session: AsyncSession, scan: ProductScan | None = None) -> dict:
+    hits = (
+        (
+            await session.execute(
+                select(ScanItem).order_by(desc(ScanItem.first_seen)).limit(15)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "scan": scan,
+        "scans": await _scan_rows(session),
+        "hits": hits,
+        "games": [
+            (g.value, "Pokémon TCG" if g == Game.POKEMON else "One Piece Card Game") for g in Game
+        ],
+    }
+
+
+def _apply_scan_form(
+    scan: ProductScan,
+    game: str,
+    label: str,
+    url: str,
+    keywords: str,
+    exclude_keywords: str,
+    interval_seconds: int,
+    channels: str,
+    use_playwright: str,
+) -> None:
+    scan.game = Game(game)
+    scan.label = label.strip()
+    scan.url = url.strip()
+    scan.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
+    scan.exclude_keywords = [k.strip() for k in exclude_keywords.split(",") if k.strip()]
+    scan.interval_seconds = max(300, interval_seconds)
+    scan.channels = [c.strip() for c in channels.split(",") if c.strip()] or [game]
+    scan.use_playwright = use_playwright == "on"
+
+
+@protected.get("/scanner", response_class=HTMLResponse)
+async def scanner_page(request: Request, session: AsyncSession = Depends(get_session)):
+    context = await _scan_context(session)
+    return templates.TemplateResponse(request, "scanner.html", {"active": "scanner", **context})
+
+
+@protected.post("/scanner")
+async def create_scan(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    game: str = Form(...),
+    label: str = Form(...),
+    url: str = Form(...),
+    keywords: str = Form(...),
+    exclude_keywords: str = Form(""),
+    interval_seconds: int = Form(900),
+    channels: str = Form(""),
+    use_playwright: str = Form(""),
+):
+    scan = ProductScan()
+    _apply_scan_form(
+        scan, game, label, url, keywords, exclude_keywords, interval_seconds, channels, use_playwright
+    )
+    session.add(scan)
+    await session.commit()
+    schedule_scan(scan)
+    return RedirectResponse("/scanner", status_code=303)
+
+
+@protected.get("/scanner/{scan_id}/edit", response_class=HTMLResponse)
+async def edit_scan_form(
+    request: Request, scan_id: int, session: AsyncSession = Depends(get_session)
+):
+    scan = await session.get(ProductScan, scan_id)
+    if scan is None:
+        return HTMLResponse("Not found", status_code=404)
+    context = await _scan_context(session, scan)
+    return templates.TemplateResponse(request, "_scan_form.html", context)
+
+
+@protected.post("/scanner/{scan_id}")
+async def update_scan(
+    request: Request,
+    scan_id: int,
+    session: AsyncSession = Depends(get_session),
+    game: str = Form(...),
+    label: str = Form(...),
+    url: str = Form(...),
+    keywords: str = Form(...),
+    exclude_keywords: str = Form(""),
+    interval_seconds: int = Form(900),
+    channels: str = Form(""),
+    use_playwright: str = Form(""),
+):
+    scan = await session.get(ProductScan, scan_id)
+    if scan is None:
+        return HTMLResponse("Not found", status_code=404)
+    _apply_scan_form(
+        scan, game, label, url, keywords, exclude_keywords, interval_seconds, channels, use_playwright
+    )
+    await session.commit()
+    schedule_scan(scan)
+    return RedirectResponse("/scanner", status_code=303)
+
+
+@protected.post("/scanner/{scan_id}/toggle", response_class=HTMLResponse)
+async def toggle_scan(request: Request, scan_id: int, session: AsyncSession = Depends(get_session)):
+    scan = await session.get(ProductScan, scan_id)
+    if scan is None:
+        return HTMLResponse("Not found", status_code=404)
+    scan.enabled = not scan.enabled
+    await session.commit()
+    schedule_scan(scan)
+    return templates.TemplateResponse(
+        request, "_scan_rows.html", {"scans": await _scan_rows(session)}
+    )
+
+
+@protected.post("/scanner/{scan_id}/check", response_class=HTMLResponse)
+async def check_scan_now(
+    request: Request, scan_id: int, session: AsyncSession = Depends(get_session)
+):
+    from app.scanner import run_scan
+
+    scan = await session.get(ProductScan, scan_id)
+    if scan is None:
+        return HTMLResponse("Not found", status_code=404)
+    await run_scan(session, scan)
+    return templates.TemplateResponse(
+        request, "_scan_rows.html", {"scans": await _scan_rows(session)}
+    )
+
+
+@protected.post("/scanner/{scan_id}/delete", response_class=HTMLResponse)
+async def delete_scan(request: Request, scan_id: int, session: AsyncSession = Depends(get_session)):
+    scan = await session.get(ProductScan, scan_id)
+    if scan is not None:
+        await session.delete(scan)
+        await session.commit()
+        remove_scan_job(scan_id)
+    return templates.TemplateResponse(
+        request, "_scan_rows.html", {"scans": await _scan_rows(session)}
+    )
+
+
+@protected.get("/scanner/table", response_class=HTMLResponse)
+async def scanner_table(request: Request, session: AsyncSession = Depends(get_session)):
+    return templates.TemplateResponse(
+        request, "_scan_rows.html", {"scans": await _scan_rows(session)}
     )
 
 
