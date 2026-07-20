@@ -1,9 +1,10 @@
 """Official One Piece Card Game (Bandai) news scraper.
 
-Targets the information index of the English official site, e.g.
-https://en.onepiece-cardgame.com/information/ — a server-rendered list where
-each entry carries a date, a category tag (PRODUCTS / EVENTS / ...) and title.
-Product-category entries are what we care about for new sets.
+Targets the news index of the English official site, e.g.
+https://en.onepiece-cardgame.com/news/ (formerly /information/) — a
+server-rendered list where each entry carries a date, a category tag
+(PRODUCTS / EVENTS / ...) and title. Product-category entries are what we care
+about for new sets.
 """
 
 from __future__ import annotations
@@ -49,13 +50,17 @@ class OnePieceOfficialSource(NewsSource):
 
         items: list[NewsItem] = []
         seen: set[str] = set()
-        for anchor in tree.css("a[href*='information'], ul li a, .newsList a, .infoList a"):
+        selector = (
+            "a[href*='news'], a[href*='topics'], a[href*='information'], "
+            "ul li a, .newsList a, .infoList a"
+        )
+        for anchor in tree.css(selector):
             attrs = anchor.attributes or {}
             href = attrs.get("href") or ""
             if not href or href.startswith(("javascript:", "#")):
                 continue
             url = urljoin(page.final_url, href)
-            if url in seen or url.rstrip("/").endswith("information"):
+            if url in seen or url.rstrip("/").endswith(("information", "news", "topics")):
                 continue
             text = re.sub(r"\s+", " ", anchor.text(deep=True, strip=True))
             if not text or len(text) < 8:
