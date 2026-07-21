@@ -177,6 +177,22 @@ async def _get_browser():
         return _browser
 
 
+def _playwright_proxy(proxy_url: str | None) -> dict | None:
+    """Playwright needs server + separate username/password, not embedded creds."""
+    if not proxy_url:
+        return None
+    split = urlsplit(proxy_url)
+    server = f"{split.scheme}://{split.hostname}"
+    if split.port:
+        server += f":{split.port}"
+    proxy: dict = {"server": server}
+    if split.username:
+        proxy["username"] = split.username
+    if split.password:
+        proxy["password"] = split.password
+    return proxy
+
+
 async def fetch_playwright(
     url: str, *, extra_headers: dict[str, str] | None = None, wait_ms: int = 2500
 ) -> PageResult:
@@ -189,7 +205,7 @@ async def fetch_playwright(
             user_agent=settings.user_agent,
             locale="de-DE",
             extra_http_headers=extra_headers or {},
-            proxy={"server": settings.proxy_url} if settings.proxy_url else None,
+            proxy=_playwright_proxy(settings.proxy_url),
         )
         start = time.monotonic()
         try:
