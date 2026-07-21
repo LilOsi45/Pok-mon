@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     proxy_url: str | None = None
     request_timeout_seconds: float = 25.0
     per_domain_concurrency: int = 1
+    # Minimum seconds between two requests to the SAME domain — spreads many
+    # watches on one shop over time so small shops don't rate-limit (429) you.
+    per_domain_min_interval_seconds: float = 20.0
     respect_robots_txt: bool = True
 
     # --- notifications: append search links to other big shops on restock alerts ---

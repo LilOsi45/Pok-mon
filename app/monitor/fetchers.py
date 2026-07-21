@@ -28,6 +28,7 @@ class RobotsDisallowed(FetchError):
 
 _client: httpx.AsyncClient | None = None
 _domain_semaphores: dict[str, asyncio.Semaphore] = {}
+_domain_last_request: dict[str, float] = {}  # domain -> monotonic time of last GET
 _robots_cache: dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]] = {}
 _ROBOTS_TTL = 24 * 3600
 
@@ -105,7 +106,16 @@ async def fetch_httpx(
     domain = _domain(url)
     last_exc: Exception | None = None
     async with _semaphore(domain):
+        # Per-domain throttle: keep a minimum gap between requests to the same
+        # shop so many watches on one domain don't burst into a 429.
+        min_gap = get_settings().per_domain_min_interval_seconds
+        last = _domain_last_request.get(domain)
+        if last is not None:
+            wait = min_gap - (time.monotonic() - last)
+            if wait > 0:
+                await asyncio.sleep(wait)
         await asyncio.sleep(random.uniform(0.2, 1.5))  # jitter, don't look like a bot burst
+        _domain_last_request[domain] = time.monotonic()
         for attempt in range(retries):
             start = time.monotonic()
             try:
