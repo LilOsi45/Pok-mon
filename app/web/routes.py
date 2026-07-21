@@ -144,6 +144,7 @@ def _apply_watch_form(
     channels: str,
     price_target: str = "",
     priority: str = "",
+    notify_on_first_seen: str = "",
 ) -> None:
     from app.monitor.detection import parse_german_price
 
@@ -160,6 +161,13 @@ def _apply_watch_form(
         watch.price_target_hit = False  # rearm on target change
     watch.price_target = new_target
     watch.priority = priority == "on"
+    was_first_seen = watch.notify_on_first_seen
+    watch.notify_on_first_seen = notify_on_first_seen == "on"
+    # Newly enabling "notify if already available" re-arms the baseline so the
+    # next check can fire even for an already-in-stock product (great for testing).
+    if watch.notify_on_first_seen and not was_first_seen:
+        watch.listing_seen = False
+        watch.last_check_at = None
 
 
 @protected.post("/watches")
@@ -176,6 +184,7 @@ async def create_watch(
     channels: str = Form(""),
     price_target: str = Form(""),
     priority: str = Form(""),
+    notify_on_first_seen: str = Form(""),
 ):
     watch = Watch()
     _apply_watch_form(
@@ -190,6 +199,7 @@ async def create_watch(
         channels,
         price_target,
         priority,
+        notify_on_first_seen,
     )
     session.add(watch)
     await session.commit()
@@ -222,6 +232,7 @@ async def update_watch(
     channels: str = Form(""),
     price_target: str = Form(""),
     priority: str = Form(""),
+    notify_on_first_seen: str = Form(""),
 ):
     watch = await session.get(Watch, watch_id)
     if watch is None:
@@ -238,6 +249,7 @@ async def update_watch(
         channels,
         price_target,
         priority,
+        notify_on_first_seen,
     )
     await session.commit()
     schedule_watch(watch)
