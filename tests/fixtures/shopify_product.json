@@ -1,0 +1,14 @@
+{
+  "product": {
+    "id": 123456789,
+    "title": "One Piece OP-11 Booster Display (EN)",
+    "handle": "op-11-booster-display",
+    "vendor": "Bandai",
+    "image": { "src": "https://cardsrfun.de/cdn/shop/products/op11.jpg" },
+    "images": [{ "src": "https://cardsrfun.de/cdn/shop/products/op11.jpg" }],
+    "variants": [
+      { "id": 1, "title": "Default", "price": "119.90", "available": true },
+      { "id": 2, "title": "Damaged", "price": "109.90", "available": false }
+    ]
+  }
+}

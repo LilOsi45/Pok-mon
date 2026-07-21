@@ -11,6 +11,7 @@ from app.monitor.adapters.games_island import GamesIslandAdapter
 from app.monitor.adapters.generic import GenericAdapter
 from app.monitor.adapters.mediamarkt_de import MediaMarktDeAdapter, SaturnDeAdapter
 from app.monitor.adapters.pokemon_center_queue import PokemonCenterQueueAdapter
+from app.monitor.adapters.shopify import ShopifyAdapter
 from app.monitor.adapters.stubs import (
     BandaiStoreAdapter,
     GameStopDeAdapter,
@@ -30,6 +31,7 @@ ADAPTER_CLASSES: tuple[type[RetailerAdapter], ...] = (
     SaturnDeAdapter,
     CardmarketAdapter,
     GamesIslandAdapter,
+    ShopifyAdapter,
     MuellerAdapter,
     SmythsToysDeAdapter,
     GameStopDeAdapter,

@@ -1,0 +1,11 @@
+{
+  "product": {
+    "id": 987654321,
+    "title": "Pokémon KP11 Booster Display (DE)",
+    "handle": "kp11-booster-display",
+    "image": { "src": "https://cardsrfun.de/cdn/shop/products/kp11.jpg" },
+    "variants": [
+      { "id": 1, "title": "Default", "price": "149.90", "available": false }
+    ]
+  }
+}
