@@ -29,14 +29,14 @@
     <tbody>
       {% for c in recent %}
       <tr>
-        <td class="muted small">{{ c.checked_at|local_dt('%d.%m. %H:%M') }}</td>
-        <td>
+        <td data-label="Zeit" class="muted small">{{ c.checked_at|local_dt('%d.%m. %H:%M') }}</td>
+        <td data-label="Status">
           {% if c.status.value == 'IN_STOCK' %}<span class="badge badge-instock">In stock</span>
           {% elif c.status.value == 'OUT_OF_STOCK' %}<span class="badge badge-oos">Out</span>
           {% else %}<span class="badge badge-unknown">?</span>{% endif %}
         </td>
-        <td>{% if c.price %}{{ '%.2f'|format(c.price) }} €{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="muted small">{{ (c.error or '')[:70] }}</td>
+        <td data-label="Preis">{% if c.price %}{{ '%.2f'|format(c.price) }} €{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td data-label="Hinweis" class="muted small">{{ (c.error or '')[:70] }}</td>
       </tr>
       {% endfor %}
     </tbody>

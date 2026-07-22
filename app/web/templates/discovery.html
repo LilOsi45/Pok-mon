@@ -63,21 +63,21 @@
         {% for s in sites %}
         <tr>
           <td class="cell-label">{{ s.domain }}</td>
-          <td>
+          <td data-label="Produkt">
             <div class="cell-sub" style="max-width:280px"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ (s.title or s.url)[:70] }}</a></div>
             {% if s.price %}<div class="small">{{ '%.2f'|format(s.price) }} €</div>{% endif %}
           </td>
-          <td>
+          <td data-label="Einschätzung">
             {% if s.verdict == 'trusted' %}<span class="badge badge-instock">wirkt seriös</span>
             {% elif s.verdict == 'check' %}<span class="badge badge-unknown">selbst prüfen</span>
             {% else %}<span class="badge badge-off fail">verdächtig</span>{% endif %}
           </td>
-          <td class="muted small" style="max-width:260px">
+          <td data-label="Checks" class="muted small" style="max-width:260px">
             {% if s.checks.get('impressum') is not none %}Impressum {{ '✓' if s.checks.impressum else '✗' }} · {% endif %}
             {% if s.checks.get('payment') %}{{ s.checks.payment }} · {% endif %}
             {% if s.checks.get('trustpilot_rating') %}TP {{ s.checks.trustpilot_rating }}★ ({{ s.checks.get('trustpilot_reviews', 0) }}){% endif %}
           </td>
-          <td class="muted small" title="{{ s.first_seen|local_dt }}">{{ s.first_seen|ago }}</td>
+          <td data-label="Gefunden" class="muted small" title="{{ s.first_seen|local_dt }}">{{ s.first_seen|ago }}</td>
         </tr>
         {% else %}
         <tr><td colspan="5"><div class="empty">Noch nichts gefunden — nach dem ersten Suchlauf erscheinen hier neue Shops.</div></td></tr>

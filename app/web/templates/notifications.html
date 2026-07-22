@@ -12,14 +12,14 @@
       <tbody>
         {% for n in notifications %}
         <tr>
-          <td class="muted small" title="{{ n.created_at|local_dt }}">{{ n.created_at|ago }}</td>
-          <td><span class="badge badge-event {{ n.event_type.value }}">{{ n.event_type.value }}</span></td>
+          <td data-label="When" class="muted small" title="{{ n.created_at|local_dt }}">{{ n.created_at|ago }}</td>
+          <td data-label="Event"><span class="badge badge-event {{ n.event_type.value }}">{{ n.event_type.value }}</span></td>
           <td>
             <div class="cell-label">{% if n.url %}<a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}</div>
             {% if n.body %}<div class="cell-sub">{{ n.body[:80] }}</div>{% endif %}
           </td>
-          <td class="muted small">{{ n.notifier }} <span class="muted">({{ n.notifier_type }})</span></td>
-          <td>
+          <td data-label="Notifier" class="muted small">{{ n.notifier }} <span class="muted">({{ n.notifier_type }})</span></td>
+          <td data-label="Result">
             {% if n.success %}<span class="ok">sent ✓</span>
             {% else %}<span class="fail" title="{{ n.error }}">failed ✕</span>{% endif %}
           </td>

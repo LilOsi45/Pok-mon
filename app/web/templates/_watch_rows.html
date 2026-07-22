@@ -4,8 +4,8 @@
     <div class="cell-label">{{ w.label }}{% if w.priority %} <span title="Wichtig: @everyone-Ping">🔔</span>{% endif %}</div>
     <div class="cell-sub"><a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.retailer or w.url }}</a></div>
   </td>
-  <td><span class="badge badge-game {{ w.game.value }}">{{ 'Pokémon' if w.game.value == 'pokemon' else 'One Piece' }}</span></td>
-  <td>
+  <td data-label="Game"><span class="badge badge-game {{ w.game.value }}">{{ 'Pokémon' if w.game.value == 'pokemon' else 'One Piece' }}</span></td>
+  <td data-label="Status">
     {% if not w.enabled %}
       <span class="badge badge-off">paused</span>
     {% elif w.last_status.value == 'IN_STOCK' %}
@@ -17,14 +17,14 @@
     {% endif %}
     {% if w.last_error %}<div class="cell-sub fail" title="{{ w.last_error }}">{{ w.last_error[:60] }}</div>{% endif %}
   </td>
-  <td>
+  <td data-label="Price">
     {% if w.last_price %}{{ '%.2f'|format(w.last_price) }} €{% else %}<span class="muted">—</span>{% endif %}
     {% if w.price_target %}<div class="cell-sub" title="Preisalarm">🎯 {{ '%.2f'|format(w.price_target) }} €</div>{% endif %}
   </td>
-  <td class="muted small" title="{{ w.last_check_at|local_dt }}">{{ w.last_check_at|ago }}</td>
-  <td class="muted small" title="{{ w.last_in_stock_at|local_dt }}">{{ w.last_in_stock_at|ago }}</td>
+  <td data-label="Last check" class="muted small" title="{{ w.last_check_at|local_dt }}">{{ w.last_check_at|ago }}</td>
+  <td data-label="Last in stock" class="muted small" title="{{ w.last_in_stock_at|local_dt }}">{{ w.last_in_stock_at|ago }}</td>
   <td>
-    <div style="display:flex; gap:0.35rem; justify-content:flex-end">
+    <div class="row-actions" style="display:flex; gap:0.35rem; justify-content:flex-end">
       <button class="btn btn-sm" title="Check now"
               hx-post="/watches/{{ w.id }}/check" hx-target="#watch-rows" hx-swap="innerHTML">Check</button>
       <button class="btn btn-sm" title="{{ 'Pause' if w.enabled else 'Resume' }}"

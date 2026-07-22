@@ -32,14 +32,14 @@
             <div class="cell-label"><a href="{{ shop.url }}" target="_blank" rel="noopener">{{ shop.name }}</a></div>
             <div class="cell-sub">{{ shop.domain }}</div>
           </td>
-          <td class="muted small">{{ shop.note or "—" }}</td>
-          <td>
+          <td data-label="Info" class="muted small">{{ shop.note or "—" }}</td>
+          <td data-label="Trustpilot">
             {% if shop.trustpilot_url %}
             <a class="btn btn-sm" href="{{ shop.trustpilot_url }}" target="_blank" rel="noopener">Bewertungen</a>
             {% else %}<span class="muted small">—</span>{% endif %}
           </td>
           <td>
-            <div style="display:flex; gap:0.35rem; justify-content:flex-end">
+            <div class="row-actions" style="display:flex; gap:0.35rem; justify-content:flex-end">
               {% if q %}
               <a class="btn btn-sm btn-primary" href="{{ shop.search_link }}" target="_blank" rel="noopener">„{{ q[:24] }}“ suchen</a>
               {% endif %}

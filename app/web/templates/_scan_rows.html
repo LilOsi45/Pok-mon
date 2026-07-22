@@ -4,21 +4,21 @@
     <div class="cell-label">{{ s.label }}</div>
     <div class="cell-sub"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a></div>
   </td>
-  <td><span class="badge badge-game {{ s.game.value }}">{{ 'Pokémon' if s.game.value == 'pokemon' else 'One Piece' }}</span></td>
-  <td>
+  <td data-label="Spiel"><span class="badge badge-game {{ s.game.value }}">{{ 'Pokémon' if s.game.value == 'pokemon' else 'One Piece' }}</span></td>
+  <td data-label="Schlagwörter">
     <span class="small">{{ s.keywords|join(' + ') }}</span>
     {% if s.exclude_keywords %}<div class="cell-sub">ohne: {{ s.exclude_keywords|join(', ') }}</div>{% endif %}
   </td>
-  <td>
+  <td data-label="Status">
     {% if not s.enabled %}<span class="badge badge-off">pausiert</span>
     {% elif not s.baseline_done %}<span class="badge badge-unknown">wartet auf 1. Lauf</span>
     {% elif s.last_error %}<span class="badge badge-off fail" title="{{ s.last_error }}">Fehler</span>
     {% else %}<span class="badge badge-event">aktiv</span>{% endif %}
     {% if s.last_error %}<div class="cell-sub fail" title="{{ s.last_error }}">{{ s.last_error[:60] }}</div>{% endif %}
   </td>
-  <td class="muted small" title="{{ s.last_check_at|local_dt }}">{{ s.last_check_at|ago }}</td>
+  <td data-label="Letzter Lauf" class="muted small" title="{{ s.last_check_at|local_dt }}">{{ s.last_check_at|ago }}</td>
   <td>
-    <div style="display:flex; gap:0.35rem; justify-content:flex-end">
+    <div class="row-actions" style="display:flex; gap:0.35rem; justify-content:flex-end">
       <button class="btn btn-sm" hx-post="/scanner/{{ s.id }}/check" hx-target="#scan-rows" hx-swap="innerHTML">Check</button>
       <button class="btn btn-sm" hx-post="/scanner/{{ s.id }}/toggle" hx-target="#scan-rows" hx-swap="innerHTML">
         {{ 'Pause' if s.enabled else 'Start' }}
