@@ -1,0 +1,14 @@
+{
+  "name": "TCG Tracker",
+  "short_name": "TCG Tracker",
+  "description": "Pokémon & One Piece TCG Restock- und News-Monitor",
+  "start_url": "/watches",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0D0B14",
+  "theme_color": "#0D0B14",
+  "icons": [
+    { "src": "/static/img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
