@@ -54,7 +54,7 @@ def build_embed(event: Event) -> dict:
         "title": f"{emoji} {event.title}"[:256],
         "color": EVENT_COLORS.get(event.type, COLOR_VIOLET),
         "timestamp": event.created_at.isoformat(),
-        "footer": {"text": f"TCG Tracker · {event.type.value}"},
+        "footer": {"text": f"{get_settings().discord_bot_name} · {event.type.value}"},
         "fields": [],
     }
     if event.message:
@@ -92,7 +92,10 @@ def build_embed(event: Event) -> dict:
 
 
 def build_payload(event: Event) -> dict:
-    payload: dict = {"username": "TCG Tracker", "embeds": [build_embed(event)]}
+    settings = get_settings()
+    payload: dict = {"username": settings.discord_bot_name, "embeds": [build_embed(event)]}
+    if settings.discord_avatar_url:  # profile picture shown next to the name
+        payload["avatar_url"] = settings.discord_avatar_url
     if event.priority:  # real phone push with sound, hard to miss
         payload["content"] = "@everyone"
         payload["allowed_mentions"] = {"parse": ["everyone"]}

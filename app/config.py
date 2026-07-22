@@ -35,6 +35,9 @@ class Settings(BaseSettings):
 
     # --- notifications ---
     discord_webhook_url: str | None = None  # default webhook if config.yaml has none
+    # Sender name + avatar shown on every Discord notification (webhook override).
+    discord_bot_name: str = "Holo Aio"
+    discord_avatar_url: str | None = None  # public image URL, e.g. the app icon
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user: str | None = None
