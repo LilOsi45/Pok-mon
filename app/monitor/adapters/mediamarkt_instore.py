@@ -51,7 +51,7 @@ class MediaMarktInStoreAdapter(RetailerAdapter):
     slug = "mediamarkt_instore"
     name = "MediaMarkt Markt-Abholung (experimentell)"
     domains = ()  # explicit selection only
-    fetcher = "playwright"  # JS + bot protection
+    fetcher = "scraperapi"  # JS + bot protection → route via the unlocker
 
     def parse(self, page: PageResult) -> StockResult:
         head = page.text[:4000].lower()

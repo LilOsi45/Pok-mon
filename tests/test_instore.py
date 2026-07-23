@@ -43,8 +43,8 @@ class TestDetection:
 
 
 class TestRegistry:
-    def test_uses_playwright(self):
-        assert MediaMarktInStoreAdapter().fetcher == "playwright"
+    def test_uses_scraperapi(self):
+        assert MediaMarktInStoreAdapter().fetcher == "scraperapi"
 
     def test_not_domain_resolved(self):
         # a normal mediamarkt URL keeps the online-stock adapter
@@ -66,5 +66,5 @@ class TestRegistry:
 
 
 def test_saturn_subclass():
-    assert SaturnInStoreAdapter().fetcher == "playwright"
+    assert SaturnInStoreAdapter().fetcher == "scraperapi"
     assert SaturnInStoreAdapter.slug == "saturn_instore"
