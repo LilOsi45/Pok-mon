@@ -30,6 +30,7 @@ from app.notify.service import dispatch_event
 log = logging.getLogger(__name__)
 
 FLOOD_CAP = 8  # more than this many new hits in one run -> one summary message
+MIN_PRICE_DELTA = 0.5  # ignore sub-50-cent wobble to avoid parse-noise price pings
 
 # path fragments that mark navigation/service links, never products
 NAV_MARKERS = (
@@ -208,6 +209,22 @@ def _summary_event(scan: ProductScan, items: list[ScanItem]) -> Event:
     )
 
 
+def _price_event(scan: ProductScan, item: ScanItem, old: float, new: float) -> Event:
+    domain = urlsplit(item.url).netloc.removeprefix("www.")
+    arrow = "📉 Preis gefallen" if new < old else "📈 Preis gestiegen"
+    return Event(
+        type=EventType.PRICE_DROP,
+        game=scan.game,
+        title=f"{arrow}: {item.title}"[:250],
+        message=f"{old:.2f} € → {new:.2f} € auf {domain}",
+        url=item.url,
+        price=new,
+        retailer=domain,
+        routes=stock_routes(scan.game, list(scan.channels or [])) + [f"scan:{scan.id}"],
+        priority=scan.priority,
+    )
+
+
 async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
     """Run one scanner pass. Commits. Never raises on fetch/parse errors."""
     from app.monitor import fetchers
@@ -237,27 +254,36 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
         for f in found
         if keywords_match(f.title, list(scan.keywords or []), list(scan.exclude_keywords or []))
     ]
-    existing_keys = set(
-        (
-            await session.execute(select(ScanItem.url_key).where(ScanItem.scan_id == scan.id))
-        ).scalars()
+    existing_items = (
+        (await session.execute(select(ScanItem).where(ScanItem.scan_id == scan.id))).scalars().all()
     )
+    existing_by_key = {i.url_key: i for i in existing_items}
     seen_this_run: set[str] = set()
     new_items: list[ScanItem] = []
+    price_changes: list[tuple[ScanItem, float, float]] = []
     for product in matching:
         key = url_key(product.url)
-        if key in existing_keys or key in seen_this_run:
+        if key in seen_this_run:
             continue
         seen_this_run.add(key)
-        new_items.append(
-            ScanItem(
-                scan_id=scan.id,
-                url=product.url,
-                url_key=key,
-                title=product.title,
-                price=product.price,
+        existing = existing_by_key.get(key)
+        if existing is None:
+            new_items.append(
+                ScanItem(
+                    scan_id=scan.id,
+                    url=product.url,
+                    url_key=key,
+                    title=product.title,
+                    price=product.price,
+                )
             )
-        )
+        elif (
+            product.price is not None
+            and existing.price is not None
+            and abs(product.price - existing.price) >= MIN_PRICE_DELTA
+        ):
+            price_changes.append((existing, existing.price, product.price))
+            existing.price = product.price
 
     scan.last_check_at = utcnow()
     scan.last_error = None
@@ -269,24 +295,31 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
     session.add_all(new_items)
     await session.commit()
     log.info(
-        "scan %s (%s): %d products on page, %d matching, %d new%s",
+        "scan %s (%s): %d products, %d matching, %d new, %d price-changes%s",
         scan.id,
         scan.label,
         len(found),
         len(matching),
         len(new_items),
+        len(price_changes),
         " (baseline)" if is_baseline else "",
     )
-    if is_baseline or not new_items:
+    if is_baseline:
         return new_items
 
-    if len(new_items) > FLOOD_CAP:
-        await dispatch_event(session, _summary_event(scan, new_items))
-    else:
+    if new_items:
+        if len(new_items) > FLOOD_CAP:
+            await dispatch_event(session, _summary_event(scan, new_items))
+        else:
+            for item in new_items:
+                await dispatch_event(session, _hit_event(scan, item))
         for item in new_items:
-            await dispatch_event(session, _hit_event(scan, item))
-    for item in new_items:
-        item.notified = True
+            item.notified = True
+
+    if price_changes and len(price_changes) <= FLOOD_CAP:
+        for item, old, new in price_changes:
+            await dispatch_event(session, _price_event(scan, item, old, new))
+
     await session.commit()
     return new_items
 

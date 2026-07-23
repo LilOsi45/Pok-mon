@@ -118,6 +118,36 @@ async def test_baseline_then_new_product_fires_once(session):
 
 
 @pytest.mark.asyncio
+async def test_price_change_pings(session):
+    scan = make_scan()
+    session.add(scan)
+    await session.commit()
+
+    html = load_fixture("listing_page.html")
+    with (
+        patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=_page(html))),
+        patch("app.scanner.dispatch_event", AsyncMock()) as dispatched,
+    ):
+        await run_scan(session, scan)  # baseline records the display @ 159.99
+        assert dispatched.call_count == 0
+
+    # same product, cheaper now → one PRICE_DROP ping
+    with (
+        patch(
+            "app.monitor.fetchers.fetch_httpx",
+            AsyncMock(return_value=_page(html.replace("159,99", "129,99"))),
+        ),
+        patch("app.scanner.dispatch_event", AsyncMock()) as dispatched,
+    ):
+        assert await run_scan(session, scan) == []  # nothing NEW
+        assert dispatched.call_count == 1
+        event = dispatched.call_args.args[1]
+        assert event.type == EventType.PRICE_DROP
+        assert event.price == 129.99
+        assert "Preis" in event.title
+
+
+@pytest.mark.asyncio
 async def test_flood_sends_single_summary(session):
     scan = make_scan(keywords=["pokemon"])
     session.add(scan)
