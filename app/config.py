@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     scraper_api_provider: Literal["scraperapi", "scrapingbee", "brightdata"] = "scraperapi"
     scraper_api_render_js: bool = True
     scraper_api_country: str = "de"
-    scraper_api_timeout_seconds: float = 90.0
+    scraper_api_timeout_seconds: float = 180.0
     # Bright Data Web Unlocker: pay-per-request, best for the hardest chains.
     # scraper_api_key holds the API token; brightdata_zone is the Unlocker zone.
     brightdata_zone: str | None = None

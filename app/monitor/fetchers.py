@@ -208,7 +208,9 @@ async def _fetch_brightdata(
                 "https://api.brightdata.com/request", json=payload, headers=headers
             )
         except httpx.HTTPError as exc:
-            raise FetchError(f"brightdata fetch failed for {url}: {exc}") from exc
+            raise FetchError(
+                f"brightdata fetch failed for {url}: {type(exc).__name__}: {exc}"
+            ) from exc
     if resp.status_code in (401, 403):
         raise FetchError(
             f"brightdata auth error (HTTP {resp.status_code}) — check API token / BRIGHTDATA_ZONE"
