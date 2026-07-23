@@ -12,6 +12,7 @@ unavailable.
 
 from __future__ import annotations
 
+import json
 import logging
 from urllib.parse import urlsplit, urlunsplit
 
@@ -80,6 +81,13 @@ class ShopifyAdapter(RetailerAdapter):
                 note="shop rate-limited (429) — increase interval / fewer watches per shop",
             )
         data = page.json_data if isinstance(page.json_data, dict) else None
+        # `.js` is served as application/javascript, so the fetcher doesn't
+        # auto-parse it — decode the body ourselves (it is valid JSON).
+        if data is None and page.text:
+            try:
+                data = json.loads(page.text)
+            except ValueError:
+                data = None
         # `.js` returns the product at the top level; `.json` wraps it in "product".
         product = data.get("product") if data and isinstance(data.get("product"), dict) else data
         if not isinstance(product, dict) or not product.get("variants"):
