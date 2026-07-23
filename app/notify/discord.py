@@ -61,7 +61,7 @@ def build_embed(event: Event) -> dict:
         embed["description"] = event.message[:4000]
     if event.url:
         embed["url"] = event.url
-    if event.image_url:
+    if event.image_url and event.image_url.startswith("http"):
         embed["thumbnail"] = {"url": event.image_url}
     if event.game:
         embed["fields"].append(

@@ -45,18 +45,19 @@ def _variant_price(variant: dict) -> float | None:
 
 
 def _product_image(product: dict) -> str | None:
+    image = None
     if isinstance(product.get("featured_image"), str):  # .js
-        return product["featured_image"]
-    image = product.get("image")  # .json
-    if isinstance(image, dict):
-        return image.get("src")
-    if isinstance(image, str):
-        return image
-    images = product.get("images")
-    if images:
-        first = images[0]
-        return first if isinstance(first, str) else (first.get("src") if isinstance(first, dict) else None)
-    return None
+        image = product["featured_image"]
+    elif isinstance(product.get("image"), dict):  # .json
+        image = product["image"].get("src")
+    elif isinstance(product.get("image"), str):
+        image = product["image"]
+    elif product.get("images"):
+        first = product["images"][0]
+        image = first if isinstance(first, str) else (first.get("src") if isinstance(first, dict) else None)
+    if image and image.startswith("//"):  # Shopify returns protocol-relative URLs
+        image = f"https:{image}"
+    return image
 
 
 class ShopifyAdapter(RetailerAdapter):
