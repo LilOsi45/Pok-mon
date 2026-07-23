@@ -260,6 +260,36 @@ input:focus, select:focus {
 
 .holo-divider { height: 1px; border: none; background: var(--holo); opacity: 0.35; margin: 1.5rem 0; }
 
+/* ---------- collapsible "add" panel + search + button feedback ---------- */
+.add-panel { margin-bottom: 1.5rem; }
+.add-toggle {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+}
+.add-toggle::-webkit-details-marker { display: none; }
+.add-toggle:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.add-panel[open] > .add-toggle { background: var(--surface-2); color: var(--text); border-color: var(--border); margin-bottom: 1rem; }
+.add-panel[open] > .add-toggle::before { content: "✕ "; }
+.add-panel .card { margin-bottom: 0; }
+
+.watch-search { margin-bottom: 1rem; }
+.watch-count { margin-top: 0.75rem; text-align: right; }
+
+/* HTMX: show a button is working (dim + block double-taps while loading) */
+.btn.htmx-request { opacity: 0.5; pointer-events: none; }
+tbody.htmx-request { opacity: 0.6; transition: opacity 0.1s ease; }
+
 /* ============================================================
    Mobile / tablet — compact top bar, scrollable nav, card tables
    ============================================================ */

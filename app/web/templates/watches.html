@@ -3,7 +3,16 @@
 {% block content %}
 <h1 class="page-title">Watches</h1>
 
+<details class="add-panel" id="add-panel">
+  <summary class="add-toggle">➕ Neue Watch hinzufügen</summary>
+  <div class="card" id="watch-form-slot">
+    {% include "_watch_form.html" %}
+  </div>
+</details>
+
 <div class="card">
+  <input id="watch-search" class="watch-search" type="search"
+         placeholder="🔍 Watch suchen (Name oder Shop)…" autocomplete="off">
   <div class="table-wrap">
     <table>
       <thead>
@@ -17,18 +26,37 @@
       </tbody>
     </table>
   </div>
+  <div class="watch-count muted small" id="watch-count"></div>
 </div>
 
 <div class="card" id="watch-detail-slot" style="display:none"></div>
 
-<div class="card" id="watch-form-slot">
-  {% include "_watch_form.html" %}
-</div>
-
 <script>
-  // show the detail card once htmx loads something into it
+  const search = document.getElementById('watch-search');
+  function applyFilter() {
+    const q = (search.value || '').toLowerCase().trim();
+    let shown = 0, total = 0;
+    document.querySelectorAll('#watch-rows tr').forEach(function (tr) {
+      if (!tr.querySelector('td')) return;            // skip the "empty" row
+      total++;
+      const hit = !q || tr.textContent.toLowerCase().includes(q);
+      tr.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    const c = document.getElementById('watch-count');
+    if (c) c.textContent = q ? (shown + ' von ' + total + ' Watches') : (total + ' Watches');
+  }
+  search.addEventListener('input', applyFilter);
+  applyFilter();
+
   document.addEventListener('htmx:afterSwap', function (evt) {
     if (evt.target.id === 'watch-detail-slot') evt.target.style.display = 'block';
+    if (evt.target.id === 'watch-form-slot') {              // Edit clicked → reveal form
+      const p = document.getElementById('add-panel');
+      p.open = true;
+      p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (evt.target.id === 'watch-rows') applyFilter();      // keep filter after refresh
   });
 </script>
 {% endblock %}
