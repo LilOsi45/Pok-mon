@@ -45,6 +45,7 @@ class StockResult:
     title: str | None = None
     image_url: str | None = None
     buy_url: str | None = None
+    cart_url: str | None = None  # Shopify one-tap add-to-cart permalink
     # True when the product is listed on the retailer at all (even if OOS).
     # Drives NEW_LISTING; parse() should set False only when clearly absent.
     listed: bool = True

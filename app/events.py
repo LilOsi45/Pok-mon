@@ -15,6 +15,7 @@ class Event:
     title: str
     message: str = ""
     url: str | None = None
+    cart_url: str | None = None  # Shopify one-tap add-to-cart permalink
     image_url: str | None = None
     price: float | None = None
     currency: str | None = None

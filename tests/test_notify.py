@@ -63,7 +63,7 @@ class TestDiscordEmbed:
         assert fields["Game"] == "One Piece Card Game"
         assert fields["Retailer"] == "Games Island"
         assert fields["Price"] == "109.90 €"
-        assert "Buy" in fields
+        assert "Kaufen" in fields
 
     def test_news_embed_is_violet(self):
         event = Event(

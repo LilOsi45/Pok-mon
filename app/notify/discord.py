@@ -76,7 +76,10 @@ def build_embed(event: Event) -> dict:
             {"name": "Price", "value": f"{event.price:.2f} {symbol}", "inline": True}
         )
     if event.url and event.is_stock_event:
-        embed["fields"].append({"name": "Buy", "value": f"[Open product page]({event.url})"})
+        links = f"[🔗 Produktseite]({event.url})"
+        if event.cart_url:  # Shopify one-tap add-to-cart
+            links += f"  ·  [🛒 In den Warenkorb]({event.cart_url})"
+        embed["fields"].append({"name": "Kaufen", "value": links})
     if event.is_stock_event and get_settings().show_other_shops:
         # product search across the other big (Trustpilot-vetted) shops
         query = event.message or event.title.split(": ", 1)[-1]

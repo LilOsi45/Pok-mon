@@ -62,6 +62,13 @@ class ShopifyAdapter(RetailerAdapter):
 
         variants = product.get("variants") or []
         available = any(v.get("available") for v in variants)
+
+        # One-tap add-to-cart permalink for the first available variant.
+        cart_url = None
+        first_available = next((v for v in variants if v.get("available") and v.get("id")), None)
+        if first_available:
+            split = urlsplit(page.url)
+            cart_url = f"{split.scheme}://{split.netloc}/cart/{first_available['id']}:1"
         prices = [
             parse_german_price(v.get("price"))
             for v in variants
@@ -86,5 +93,6 @@ class ShopifyAdapter(RetailerAdapter):
             title=product.get("title"),
             image_url=image,
             buy_url=buy_url,
+            cart_url=cart_url,
             note=f"shopify: {sum(1 for v in variants if v.get('available'))}/{len(variants)} variants available",
         )

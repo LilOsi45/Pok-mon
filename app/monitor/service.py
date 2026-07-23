@@ -90,6 +90,7 @@ def _build_event(watch: Watch, result: StockResult, event_type: EventType) -> Ev
         title=title,
         message=message,
         url=result.buy_url or watch.url,
+        cart_url=result.cart_url,
         image_url=result.image_url or watch.last_image_url,
         price=result.price,
         currency=result.currency,
