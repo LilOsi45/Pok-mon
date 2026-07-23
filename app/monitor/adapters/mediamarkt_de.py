@@ -53,3 +53,13 @@ class SaturnDeAdapter(MediaMarktDeAdapter):
     slug = "saturn_de"
     name = "Saturn.de"
     domains = ("saturn.de", "www.saturn.de")
+
+
+class ExpertDeAdapter(MediaMarktDeAdapter):
+    """expert.de — reuse the JSON-LD / schema.org availability cascade. Reports
+    online orderable/reservable vs sold out (per-store pickup is not exposed
+    Germany-wide, so this tracks purchasability, not a specific Fachmarkt)."""
+
+    slug = "expert_de"
+    name = "expert.de"
+    domains = ("expert.de", "www.expert.de")

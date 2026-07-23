@@ -9,7 +9,11 @@ from app.monitor.adapters.amazon_de import AmazonDeAdapter
 from app.monitor.adapters.cardmarket import CardmarketAdapter
 from app.monitor.adapters.games_island import GamesIslandAdapter
 from app.monitor.adapters.generic import GenericAdapter
-from app.monitor.adapters.mediamarkt_de import MediaMarktDeAdapter, SaturnDeAdapter
+from app.monitor.adapters.mediamarkt_de import (
+    ExpertDeAdapter,
+    MediaMarktDeAdapter,
+    SaturnDeAdapter,
+)
 from app.monitor.adapters.mediamarkt_instore import (
     MediaMarktInStoreAdapter,
     SaturnInStoreAdapter,
@@ -33,6 +37,7 @@ ADAPTER_CLASSES: tuple[type[RetailerAdapter], ...] = (
     AmazonDeAdapter,
     MediaMarktDeAdapter,
     SaturnDeAdapter,
+    ExpertDeAdapter,
     CardmarketAdapter,
     GamesIslandAdapter,
     ShopifyAdapter,
