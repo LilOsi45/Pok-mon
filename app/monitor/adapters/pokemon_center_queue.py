@@ -65,12 +65,10 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
 
         if self.detection_config.get("fetcher") == "playwright":
             return await fetchers.fetch_playwright(url)
-        # Pokémon Center sits behind Imperva — plain httpx gets a bot wall.
-        # With a scraping key, go through the unlocker: it clears the anti-bot
-        # but can't skip a live Queue-it waiting room, so the queue-page phrases
-        # in parse() still fire when a drop is live.
-        if get_settings().scraper_api_key:
-            return await fetchers.fetch_scraperapi(url)
+        # NOTE: never route this through the scraping API/unlocker — that is
+        # designed to get *past* the anti-bot/queue, which hides the very signal
+        # we want. We fetch directly (via PROXY_URL) and DON'T follow redirects,
+        # so the Queue-it redirect / waiting-room page is what we detect.
         settings = get_settings()
         await asyncio.sleep(random.uniform(0.2, 1.5))
         start = time.monotonic()
