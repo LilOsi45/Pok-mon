@@ -12,7 +12,7 @@ from selectolax.parser import HTMLParser
 
 from app.models import StockStatus
 from app.monitor.base import PageResult, RetailerAdapter, StockResult
-from app.monitor.detection import detect_stock, parse_json_ld
+from app.monitor.detection import detect_stock, parse_json_ld, scan_raw_availability
 
 
 class MediaMarktDeAdapter(RetailerAdapter):
@@ -38,6 +38,11 @@ class MediaMarktDeAdapter(RetailerAdapter):
         if node := tree.css_first("h1"):
             title = node.text(strip=True)
         result = detect_stock(page.text, page_title=title)
+        # MediaMarkt embeds schema.org availability in JS/JSON blobs (not clean
+        # JSON-LD), so fall back to a raw scan when the heuristics find no signal.
+        if result.status == StockStatus.UNKNOWN and (raw := scan_raw_availability(page.text)):
+            result.status = raw
+            result.note = "schema-raw"
         result.buy_url = result.buy_url or page.final_url
         return result
 

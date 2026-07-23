@@ -194,6 +194,19 @@ def parse_json_ld(html: str) -> StockResult | None:
 # ---------------------------------------------------------------------------
 
 
+_SCHEMA_AVAIL_RE = re.compile(r"schema\.org/(\w+)", re.I)
+
+
+def scan_raw_availability(html: str) -> StockStatus | None:
+    """First schema.org/<availability> token found in the raw HTML (incl. JS
+    blobs). MediaMarkt/Saturn embed availability here rather than clean JSON-LD."""
+    for match in _SCHEMA_AVAIL_RE.finditer(html):
+        status = _normalize_availability(match.group(1))
+        if status is not None:
+            return status
+    return None
+
+
 def find_sold_out_phrase(text_lower: str) -> str | None:
     for phrase in SOLD_OUT_PHRASES:
         if phrase in text_lower:
