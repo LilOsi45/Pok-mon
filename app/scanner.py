@@ -211,9 +211,14 @@ def _summary_event(scan: ProductScan, items: list[ScanItem]) -> Event:
 async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
     """Run one scanner pass. Commits. Never raises on fetch/parse errors."""
     from app.monitor import fetchers
+    from app.monitor.registry import resolve_adapter
 
     try:
-        if scan.use_playwright:
+        # Bot-protected chains (MediaMarkt/Saturn/Smyths…) resolve to a
+        # scraperapi adapter — route the scan through the same unlocker.
+        if resolve_adapter(scan.url).fetcher == "scraperapi":
+            page = await fetchers.fetch_scraperapi(scan.url)
+        elif scan.use_playwright:
             page = await fetchers.fetch_playwright(scan.url)
         else:
             page = await fetchers.fetch_httpx(scan.url)
