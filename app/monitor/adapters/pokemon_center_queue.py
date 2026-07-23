@@ -54,6 +54,17 @@ QUEUE_PAGE_PHRASES = (
 
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
+# Imperva/Incapsula anti-bot challenge markers — this wall going up is the
+# early "queue coming soon" signal (it precedes the actual Queue-it room).
+ANTI_BOT_MARKERS = (
+    "incapsula",
+    "_incapsula_resource",
+    "imperva",
+    "incident id",
+    "request unsuccessful",
+    "verify you are human",
+)
+
 
 class PokemonCenterQueueAdapter(RetailerAdapter):
     slug = "pokemon_center_queue"
@@ -113,6 +124,15 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
             return self._queue_live(f"landed on queue page: {page.final_url[:120]}")
         if any(phrase in body_lower for phrase in QUEUE_PAGE_PHRASES):
             return self._queue_live("queue page content detected")
+
+        # Early warning: the anti-bot wall is up (precedes the queue opening).
+        if any(marker in body_lower for marker in ANTI_BOT_MARKERS):
+            return StockResult(
+                status=StockStatus.IN_STOCK,
+                title="Pokémon Center",
+                alert_title="⚠️ Anti-Bot aktiv — Queue kommt gleich",
+                note="anti-bot/imperva wall detected",
+            )
 
         if page.status_code == 200 or page.status_code in REDIRECT_STATUSES:
             # site reachable, no queue in sight -> idle
