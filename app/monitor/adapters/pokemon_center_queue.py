@@ -54,17 +54,6 @@ QUEUE_PAGE_PHRASES = (
 
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
-# Imperva/Incapsula anti-bot challenge markers — this wall going up is the
-# early "queue coming soon" signal (it precedes the actual Queue-it room).
-ANTI_BOT_MARKERS = (
-    "incapsula",
-    "_incapsula_resource",
-    "imperva",
-    "incident id",
-    "request unsuccessful",
-    "verify you are human",
-)
-
 
 class PokemonCenterQueueAdapter(RetailerAdapter):
     slug = "pokemon_center_queue"
@@ -106,44 +95,38 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
             fetched_via="httpx",
         )
 
-    def _queue_live(self, note: str) -> StockResult:
+    def _signal(self, alert_title: str, note: str) -> StockResult:
         return StockResult(
             status=StockStatus.IN_STOCK,
-            title="Pokémon Center Warteschlange",
-            alert_title="🚨 Queue ist OFFEN",
+            title="Pokémon Center",
+            alert_title=alert_title,
             note=note,
         )
 
     def parse(self, page: PageResult) -> StockResult:
         location = (page.headers.get("location") or "").lower()
         body_lower = page.text[:20000].lower()
+        status = page.status_code
 
-        if page.status_code in REDIRECT_STATUSES and QUEUE_HOST_MARKER in location:
-            return self._queue_live(f"redirect to queue: {location[:120]}")
-        if QUEUE_HOST_MARKER in page.final_url.lower():
-            return self._queue_live(f"landed on queue page: {page.final_url[:120]}")
-        if any(phrase in body_lower for phrase in QUEUE_PAGE_PHRASES):
-            return self._queue_live("queue page content detected")
+        # 1. Queue-it waiting room reached — the drop is live.
+        if (
+            (status in REDIRECT_STATUSES and QUEUE_HOST_MARKER in location)
+            or QUEUE_HOST_MARKER in page.final_url.lower()
+            or any(phrase in body_lower for phrase in QUEUE_PAGE_PHRASES)
+        ):
+            return self._signal("🚨 Queue ist OFFEN", "queue detected")
 
-        # Early warning: the anti-bot wall is up (precedes the queue opening).
-        if any(marker in body_lower for marker in ANTI_BOT_MARKERS):
-            return StockResult(
-                status=StockStatus.IN_STOCK,
-                title="Pokémon Center",
-                alert_title="⚠️ Anti-Bot aktiv — Queue kommt gleich",
-                note="anti-bot/imperva wall detected",
-            )
+        # 2. Heightened anti-bot / overload — PC serves a permanent JS challenge
+        #    (403) at rest, so we can't read the queue directly; but when a drop
+        #    launches the wall goes up and the response changes (503 overload).
+        #    That change is the "queue coming soon" signal we CAN see.
+        if status in (503, 502, 504):
+            return self._signal("⚠️ PC-Aktivität — Anti-Bot hoch (Drop?)", f"HTTP {status}")
 
-        if page.status_code == 200 or page.status_code in REDIRECT_STATUSES:
-            # site reachable, no queue in sight -> idle
-            return StockResult(
-                status=StockStatus.OUT_OF_STOCK,
-                title="Pokémon Center Warteschlange",
-                note="site normal, no queue",
-            )
-        if page.status_code in (403, 429):
-            return StockResult(
-                status=StockStatus.UNKNOWN,
-                note=f"bot wall (HTTP {page.status_code}) — consider PROXY_URL or playwright",
-            )
-        return StockResult(status=StockStatus.UNKNOWN, note=f"HTTP {page.status_code}")
+        # 3. Steady state: standard JS challenge (403) or the normal store (200)
+        #    — idle baseline, no alert (we ping on *changes* away from this).
+        return StockResult(
+            status=StockStatus.OUT_OF_STOCK,
+            title="Pokémon Center",
+            note=f"idle (HTTP {status})",
+        )

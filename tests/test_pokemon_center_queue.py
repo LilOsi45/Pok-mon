@@ -59,10 +59,17 @@ class TestDetection:
         result = PokemonCenterQueueAdapter().parse(page(text=html))
         assert result.status == StockStatus.OUT_OF_STOCK
 
-    def test_bot_wall_is_unknown(self):
-        result = PokemonCenterQueueAdapter().parse(page(status=403, text="Access denied"))
-        assert result.status == StockStatus.UNKNOWN
-        assert "bot wall" in result.note
+    def test_challenge_403_is_idle_baseline(self):
+        # PC serves a permanent JS challenge (403) at rest → idle, no alert
+        result = PokemonCenterQueueAdapter().parse(page(status=403, text="cmsg challenge"))
+        assert result.status == StockStatus.OUT_OF_STOCK
+        assert "idle" in result.note
+
+    def test_503_overload_signals_activity(self):
+        # the wall going up during a drop shows as an overload → alert
+        result = PokemonCenterQueueAdapter().parse(page(status=503, text="<html>busy</html>"))
+        assert result.status == StockStatus.IN_STOCK
+        assert result.alert_title and "Anti-Bot" in result.alert_title
 
     def test_not_domain_resolved_but_slug_selectable(self):
         # plain pokemoncenter.com watches keep the product stub…
