@@ -185,6 +185,45 @@ def _scraper_request(target: str) -> tuple[str, dict]:
     return "http://api.scraperapi.com/", params
 
 
+async def _fetch_brightdata(
+    url: str, settings, start: float, extra_headers: dict[str, str] | None
+) -> PageResult:
+    """Bright Data Web Unlocker API (POST, Bearer auth, raw HTML back)."""
+    if not settings.brightdata_zone:
+        raise FetchError("brightdata provider needs BRIGHTDATA_ZONE set")
+    payload = {
+        "zone": settings.brightdata_zone,
+        "url": url,
+        "format": "raw",
+        "country": settings.scraper_api_country,
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.scraper_api_key}",
+        "Content-Type": "application/json",
+        **(extra_headers or {}),
+    }
+    async with httpx.AsyncClient(timeout=settings.scraper_api_timeout_seconds) as client:
+        try:
+            resp = await client.post(
+                "https://api.brightdata.com/request", json=payload, headers=headers
+            )
+        except httpx.HTTPError as exc:
+            raise FetchError(f"brightdata fetch failed for {url}: {exc}") from exc
+    if resp.status_code in (401, 403):
+        raise FetchError(
+            f"brightdata auth error (HTTP {resp.status_code}) — check API token / BRIGHTDATA_ZONE"
+        )
+    return PageResult(
+        url=url,
+        final_url=url,
+        status_code=resp.status_code,
+        text=resp.text,
+        headers=dict(resp.headers),
+        elapsed_ms=int((time.monotonic() - start) * 1000),
+        fetched_via="scraperapi:brightdata",
+    )
+
+
 async def fetch_scraperapi(
     url: str, *, extra_headers: dict[str, str] | None = None
 ) -> PageResult:
@@ -194,8 +233,10 @@ async def fetch_scraperapi(
     if not settings.scraper_api_key:
         log.warning("scraperapi requested but SCRAPER_API_KEY unset — falling back to httpx")
         return await fetch_httpx(url, extra_headers=extra_headers, respect_robots=False)
-    endpoint, params = _scraper_request(url)
     start = time.monotonic()
+    if settings.scraper_api_provider == "brightdata":
+        return await _fetch_brightdata(url, settings, start, extra_headers)
+    endpoint, params = _scraper_request(url)
     # The provider supplies its own proxies — call it directly (no proxy_url).
     async with httpx.AsyncClient(
         timeout=settings.scraper_api_timeout_seconds, follow_redirects=True

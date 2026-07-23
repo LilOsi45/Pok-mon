@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import app.config as config
+import app.monitor.fetchers as fetchers
 from app.monitor.adapters.mediamarkt_de import MediaMarktDeAdapter, SaturnDeAdapter
 from app.monitor.adapters.stubs import (
     GamewareAdapter,
@@ -68,4 +71,49 @@ class TestScraperRequest:
         _reload_settings(monkeypatch, SCRAPER_API_KEY="k")
         _, params = _scraper_request("https://shop.de/p/1")
         assert "premium" not in params and "ultra_premium" not in params
+        config.get_settings.cache_clear()
+
+
+class _FakeResp:
+    def __init__(self, status_code=200, text="<html>ok</html>"):
+        self.status_code = status_code
+        self.text = text
+        self.headers: dict = {}
+
+
+class _FakeClient:
+    captured: dict = {}
+
+    def __init__(self, *a, **k):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, json=None, headers=None):
+        _FakeClient.captured = {"url": url, "json": json, "headers": headers}
+        return _FakeResp()
+
+
+class TestBrightData:
+    def test_brightdata_request(self, monkeypatch):
+        _reload_settings(
+            monkeypatch,
+            SCRAPER_API_KEY="tok",
+            SCRAPER_API_PROVIDER="brightdata",
+            BRIGHTDATA_ZONE="web_unlocker",
+        )
+        monkeypatch.setattr(fetchers.httpx, "AsyncClient", _FakeClient)
+        page = asyncio.run(fetchers.fetch_scraperapi("https://shop.de/p"))
+        cap = _FakeClient.captured
+        assert cap["url"] == "https://api.brightdata.com/request"
+        assert cap["json"]["zone"] == "web_unlocker"
+        assert cap["json"]["url"] == "https://shop.de/p"
+        assert cap["json"]["format"] == "raw"
+        assert cap["json"]["country"] == "de"
+        assert cap["headers"]["Authorization"] == "Bearer tok"
+        assert page.fetched_via == "scraperapi:brightdata"
         config.get_settings.cache_clear()
