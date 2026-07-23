@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     scraper_api_render_js: bool = True
     scraper_api_country: str = "de"
     scraper_api_timeout_seconds: float = 90.0
+    # Proxy pool tier. "standard" works on the free trial but is blocked by the
+    # toughest chains (MediaMarkt/Smyths). "premium"/"ultra_premium" need a PAID
+    # plan and cost more credits per request, but crack heavily-protected sites.
+    scraper_api_tier: Literal["standard", "premium", "ultra_premium"] = "standard"
     per_domain_concurrency: int = 1
     # Minimum seconds between two requests to the SAME domain — spreads many
     # watches on one shop over time so small shops don't rate-limit (429) you.

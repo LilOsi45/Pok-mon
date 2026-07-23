@@ -161,17 +161,27 @@ async def fetch_httpx(
 def _scraper_request(target: str) -> tuple[str, dict]:
     """Build (endpoint, query params) for the configured scraping provider."""
     s = get_settings()
+    tier = s.scraper_api_tier
     if s.scraper_api_provider == "scrapingbee":
-        return "https://app.scrapingbee.com/api/v1/", {
+        params = {
             "api_key": s.scraper_api_key,
             "url": target,
             "render_js": "true" if s.scraper_api_render_js else "false",
             "country_code": s.scraper_api_country,
         }
+        if tier in ("premium", "ultra_premium"):
+            params["premium_proxy"] = "true"
+        if tier == "ultra_premium":
+            params["stealth_proxy"] = "true"
+        return "https://app.scrapingbee.com/api/v1/", params
     # default: scraperapi
     params = {"api_key": s.scraper_api_key, "url": target, "country_code": s.scraper_api_country}
     if s.scraper_api_render_js:
         params["render"] = "true"
+    if tier == "premium":
+        params["premium"] = "true"
+    elif tier == "ultra_premium":
+        params["ultra_premium"] = "true"
     return "http://api.scraperapi.com/", params
 
 

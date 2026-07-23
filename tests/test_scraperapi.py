@@ -56,3 +56,16 @@ class TestScraperRequest:
         _, params = _scraper_request("https://shop.de/p/1")
         assert "render" not in params
         config.get_settings.cache_clear()
+
+    def test_ultra_premium_tier(self, monkeypatch):
+        _reload_settings(monkeypatch, SCRAPER_API_KEY="k", SCRAPER_API_TIER="ultra_premium")
+        _, params = _scraper_request("https://shop.de/p/1")
+        assert params["ultra_premium"] == "true"
+        assert "premium" not in params
+        config.get_settings.cache_clear()
+
+    def test_standard_tier_has_no_premium_flags(self, monkeypatch):
+        _reload_settings(monkeypatch, SCRAPER_API_KEY="k")
+        _, params = _scraper_request("https://shop.de/p/1")
+        assert "premium" not in params and "ultra_premium" not in params
+        config.get_settings.cache_clear()
