@@ -152,6 +152,64 @@ async def fetch_httpx(
 
 
 # ---------------------------------------------------------------------------
+# Scraping API — for JS-rendered + bot-protected shops (MediaMarkt, Smyths, …)
+# where our own httpx/Playwright + residential proxy still get blocked. The
+# provider runs the render + anti-bot bypass on their side and returns HTML.
+# ---------------------------------------------------------------------------
+
+
+def _scraper_request(target: str) -> tuple[str, dict]:
+    """Build (endpoint, query params) for the configured scraping provider."""
+    s = get_settings()
+    if s.scraper_api_provider == "scrapingbee":
+        return "https://app.scrapingbee.com/api/v1/", {
+            "api_key": s.scraper_api_key,
+            "url": target,
+            "render_js": "true" if s.scraper_api_render_js else "false",
+            "country_code": s.scraper_api_country,
+        }
+    # default: scraperapi
+    params = {"api_key": s.scraper_api_key, "url": target, "country_code": s.scraper_api_country}
+    if s.scraper_api_render_js:
+        params["render"] = "true"
+    return "http://api.scraperapi.com/", params
+
+
+async def fetch_scraperapi(
+    url: str, *, extra_headers: dict[str, str] | None = None
+) -> PageResult:
+    """Fetch a URL through the configured scraping API. Falls back to plain
+    httpx when no SCRAPER_API_KEY is set, so watches never hard-fail."""
+    settings = get_settings()
+    if not settings.scraper_api_key:
+        log.warning("scraperapi requested but SCRAPER_API_KEY unset — falling back to httpx")
+        return await fetch_httpx(url, extra_headers=extra_headers, respect_robots=False)
+    endpoint, params = _scraper_request(url)
+    start = time.monotonic()
+    # The provider supplies its own proxies — call it directly (no proxy_url).
+    async with httpx.AsyncClient(
+        timeout=settings.scraper_api_timeout_seconds, follow_redirects=True
+    ) as client:
+        try:
+            resp = await client.get(endpoint, params=params, headers=extra_headers or {})
+        except httpx.HTTPError as exc:
+            raise FetchError(f"scraperapi fetch failed for {url}: {exc}") from exc
+    if resp.status_code in (401, 403):
+        raise FetchError(
+            f"scraperapi auth/quota error (HTTP {resp.status_code}) — check SCRAPER_API_KEY / credits"
+        )
+    return PageResult(
+        url=url,
+        final_url=str(resp.url),
+        status_code=resp.status_code,
+        text=resp.text,
+        headers=dict(resp.headers),
+        elapsed_ms=int((time.monotonic() - start) * 1000),
+        fetched_via=f"scraperapi:{settings.scraper_api_provider}",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Playwright (optional) — for JS-heavy / anti-bot sites
 # ---------------------------------------------------------------------------
 

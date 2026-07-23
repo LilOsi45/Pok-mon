@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     )
     proxy_url: str | None = None
     request_timeout_seconds: float = 25.0
+    # --- scraping API (JS-rendered / bot-protected chains: MediaMarkt, Saturn,
+    # Smyths, Pokémon Center …). Set SCRAPER_API_KEY to enable; without a key the
+    # affected adapters silently fall back to plain httpx (i.e. stay UNKNOWN). ---
+    scraper_api_key: str | None = None
+    scraper_api_provider: Literal["scraperapi", "scrapingbee"] = "scraperapi"
+    scraper_api_render_js: bool = True
+    scraper_api_country: str = "de"
+    scraper_api_timeout_seconds: float = 90.0
     per_domain_concurrency: int = 1
     # Minimum seconds between two requests to the SAME domain — spreads many
     # watches on one shop over time so small shops don't rate-limit (429) you.

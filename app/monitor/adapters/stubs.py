@@ -18,7 +18,14 @@ log = logging.getLogger(__name__)
 
 
 class _BestEffortStub(GenericAdapter):
-    """Generic detection + a 'stub' marker in the result note."""
+    """Generic detection + a 'stub' marker in the result note.
+
+    These are all big retail chains that render stock via JavaScript and/or sit
+    behind bot protection, so they default to the scraping API. Without a
+    SCRAPER_API_KEY that fetcher transparently falls back to plain httpx.
+    """
+
+    fetcher = "scraperapi"
 
     def parse(self, page: PageResult) -> StockResult:
         result = super().parse(page)
@@ -74,7 +81,6 @@ class PokemonCenterEuAdapter(_BestEffortStub):
     slug = "pokemon_center_eu"
     name = "Pokémon Center EU"
     domains = ("pokemoncenter.com", "www.pokemoncenter.com")
-    fetcher = "playwright"
 
 
 class BandaiStoreAdapter(_BestEffortStub):
@@ -84,4 +90,3 @@ class BandaiStoreAdapter(_BestEffortStub):
     slug = "bandai_store"
     name = "Premium Bandai EU"
     domains = ("p-bandai.eu", "www.p-bandai.eu", "p-bandai.com")
-    fetcher = "playwright"

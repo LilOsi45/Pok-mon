@@ -19,6 +19,10 @@ class MediaMarktDeAdapter(RetailerAdapter):
     slug = "mediamarkt_de"
     name = "MediaMarkt.de"
     domains = ("mediamarkt.de", "www.mediamarkt.de")
+    # MediaMarkt/Saturn are JS-rendered behind Cloudflare — plain httpx and even
+    # Playwright+residential proxy get blocked. Route through the scraping API
+    # (no-op fallback to httpx when SCRAPER_API_KEY is unset).
+    fetcher = "scraperapi"
 
     def parse(self, page: PageResult) -> StockResult:
         result = parse_json_ld(page.text)

@@ -65,7 +65,7 @@ class RetailerAdapter(ABC):
     slug: ClassVar[str] = "base"
     name: ClassVar[str] = "Base"
     domains: ClassVar[tuple[str, ...]] = ()
-    fetcher: ClassVar[Literal["httpx", "playwright"]] = "httpx"
+    fetcher: ClassVar[Literal["httpx", "playwright", "scraperapi"]] = "httpx"
     uses_api: ClassVar[bool] = False  # API adapters skip robots.txt (governed by API ToS)
     # Extra request headers per adapter (e.g. Accept-Language)
     extra_headers: ClassVar[dict[str, str]] = {}
@@ -76,6 +76,8 @@ class RetailerAdapter(ABC):
     async def fetch(self, url: str) -> PageResult:
         from app.monitor import fetchers
 
+        if self.fetcher == "scraperapi":
+            return await fetchers.fetch_scraperapi(url, extra_headers=self.extra_headers)
         if self.fetcher == "playwright":
             return await fetchers.fetch_playwright(url, extra_headers=self.extra_headers)
         return await fetchers.fetch_httpx(
