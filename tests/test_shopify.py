@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from app.models import StockStatus
-from app.monitor.adapters.shopify import ShopifyAdapter, product_json_url
+from app.monitor.adapters.shopify import ShopifyAdapter, product_js_url
 from app.monitor.base import PageResult
 from app.monitor.registry import resolve_adapter
 from tests.conftest import load_fixture
@@ -15,21 +15,21 @@ def page(json_data=None, status: int = 200, url="https://cardsrfun.de/products/x
     return PageResult(url=url, final_url=url, status_code=status, json_data=json_data)
 
 
-class TestJsonUrl:
-    def test_appends_json(self):
+class TestJsUrl:
+    def test_appends_js(self):
         assert (
-            product_json_url("https://cardsrfun.de/collections/best-seller/products/op-11")
-            == "https://cardsrfun.de/collections/best-seller/products/op-11.json"
+            product_js_url("https://cardsrfun.de/collections/best-seller/products/op-11")
+            == "https://cardsrfun.de/collections/best-seller/products/op-11.js"
         )
 
     def test_strips_query_and_trailing_slash(self):
         assert (
-            product_json_url("https://cardsrfun.de/products/op-11/?variant=42")
-            == "https://cardsrfun.de/products/op-11.json"
+            product_js_url("https://cardsrfun.de/products/op-11/?variant=42")
+            == "https://cardsrfun.de/products/op-11.js"
         )
 
-    def test_idempotent(self):
-        assert product_json_url("https://x.de/products/y.json") == "https://x.de/products/y.json"
+    def test_converts_json_suffix(self):
+        assert product_js_url("https://x.de/products/y.json") == "https://x.de/products/y.js"
 
 
 class TestParse:
@@ -46,6 +46,19 @@ class TestParse:
         result = ShopifyAdapter().parse(page(json_data=data))
         assert result.status == StockStatus.OUT_OF_STOCK
         assert result.price == 149.90
+
+    def test_js_format_cents_and_toplevel_available(self):
+        # Ajax .js: product at top level, prices in cents, `available` flag
+        data = {
+            "title": "Naruto Display",
+            "available": True,
+            "featured_image": "https://cardsrfun.de/img/n.jpg",
+            "variants": [{"id": 42, "available": True, "price": 7499}],
+        }
+        result = ShopifyAdapter().parse(page(json_data=data))
+        assert result.status == StockStatus.IN_STOCK
+        assert result.price == 74.99
+        assert result.cart_url == "https://cardsrfun.de/cart/42:1"
 
     def test_rate_limited_is_unknown(self):
         result = ShopifyAdapter().parse(page(status=429))
