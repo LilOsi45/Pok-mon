@@ -1,0 +1,45 @@
+notifiers:
+  # Route patterns are matched against event routes:
+  #   stock events -> ["stock:<game>", "channel:<name>", "watch:<id>"]
+  #   news events  -> ["news:<game>", "source:<name>"]
+  - name: tcg-check
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_TCG_CHECK }
+    routes: ["channel:tcg-check"]
+  - name: pc-queue
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_PC_QUEUE }
+    routes: ["channel:pc-queue"]
+  - name: pokemon-de
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_POKE_DE }
+    routes: ["channel:poke-de"]
+  - name: pokemon-usgb
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_POKE_USGB }
+    routes: ["channel:poke-usgb"]
+  - name: pokemon-jp
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_POKE_JP }
+    routes: ["channel:poke-jp"]
+  - name: onepiece-de
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_OP_DE }
+    routes: ["channel:op-de"]
+  - name: onepiece-usgb
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_OP_USGB }
+    routes: ["channel:op-usgb"]
+  - name: onepiece-jp
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_OP_JP }
+    routes: ["channel:op-jp"]
+  - name: set-news
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_NEWS }
+    routes: ["news:*"]
+  - name: staff
+    type: discord
+    config: { webhook_url_env: DISCORD_WEBHOOK_URL_STAFF }
+    routes: ["discovery:*", "system:*"]
+
