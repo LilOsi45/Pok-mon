@@ -5,8 +5,10 @@ services:
       args:
         INSTALL_PLAYWRIGHT: "true"   # set "false" for a slim image without Chromium
     restart: unless-stopped
+    # Only bound to localhost — the public entry point is Caddy (HTTPS).
+    # Caddy still reaches the app over the internal compose network (app:8000).
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file: .env
     volumes:
       - ./data:/app/data
