@@ -39,7 +39,10 @@ def verify_session_cookie(value: str) -> bool:
 
 async def verify_password(password: str) -> bool:
     await asyncio.sleep(0.3)  # cheap brute-force damping
-    return hmac.compare_digest(password, get_settings().dashboard_password)
+    # compare as bytes: hmac.compare_digest raises on non-ASCII str (umlauts…)
+    return hmac.compare_digest(
+        password.encode("utf-8"), get_settings().dashboard_password.encode("utf-8")
+    )
 
 
 def is_authenticated(request: Request) -> bool:
@@ -49,7 +52,9 @@ def is_authenticated(request: Request) -> bool:
     token = get_settings().dashboard_token
     auth_header = request.headers.get("Authorization", "")
     if token and auth_header.startswith("Bearer "):
-        return hmac.compare_digest(auth_header.removeprefix("Bearer ").strip(), token)
+        return hmac.compare_digest(
+            auth_header.removeprefix("Bearer ").strip().encode("utf-8"), token.encode("utf-8")
+        )
     return False
 
 
