@@ -20,6 +20,8 @@ Detection signals, strongest first:
 3. queue-page phrases in the body — also on HTTP 503, which Queue-it's edge
    mode uses while holding visitors (generic queue-it JS tags on the normal
    page do NOT count, they are present even when no queue runs)
+4. early warning: the edge stops answering the way it does at rest (200/403)
+   and returns 429 or any 5xx — the wall going up as a drop spins up
 
 If checks are permanently UNKNOWN, the bot wall is blocking the server's IP:
 set PROXY_URL in .env or detection config {"fetcher": "playwright"}.
@@ -53,6 +55,12 @@ QUEUE_PAGE_PHRASES = (
 )
 
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+
+# How the edge answers us at rest: the normal store (200) or — far more often —
+# the permanent JS challenge Pokémon Center serves to datacenter IPs (403).
+# Anything else means the wall moved. 404 is excluded on purpose: that is a
+# wrong watch URL, not a drop.
+IDLE_STATUSES = (200, 403, 404)
 
 
 class PokemonCenterQueueAdapter(RetailerAdapter):
@@ -118,10 +126,12 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
 
         # 2. Heightened anti-bot / overload — PC serves a permanent JS challenge
         #    (403) at rest, so we can't read the queue directly; but when a drop
-        #    launches the wall goes up and the response changes (503 overload).
-        #    That change is the "queue coming soon" signal we CAN see.
-        if status in (503, 502, 504):
-            return self._signal("⚠️ PC-Aktivität — Anti-Bot hoch (Drop?)", f"HTTP {status}")
+        #    launches the wall goes up and the edge answers differently. That
+        #    change is the "queue coming soon" signal we CAN see. Covers 429
+        #    (rate limited) and every 5xx incl. Cloudflare's 52x overload codes.
+        if status not in IDLE_STATUSES and (status == 429 or status >= 500):
+            label = "Rate-Limit" if status == 429 else "Anti-Bot hoch"
+            return self._signal(f"⚠️ PC-Aktivität — {label} (Drop?)", f"HTTP {status}")
 
         # 3. Steady state: standard JS challenge (403) or the normal store (200)
         #    — idle baseline, no alert (we ping on *changes* away from this).

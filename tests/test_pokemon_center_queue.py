@@ -71,6 +71,25 @@ class TestDetection:
         assert result.status == StockStatus.IN_STOCK
         assert result.alert_title and "Anti-Bot" in result.alert_title
 
+    def test_429_rate_limit_signals_activity(self):
+        # anti-bot throttling us is the same story as an overload
+        result = PokemonCenterQueueAdapter().parse(page(status=429, text="too many requests"))
+        assert result.status == StockStatus.IN_STOCK
+        assert result.alert_title and "Rate-Limit" in result.alert_title
+
+    @pytest.mark.parametrize("status", [500, 520, 521, 522, 525])
+    def test_any_5xx_signals_activity(self, status: int):
+        # Cloudflare's 52x edge codes appear when the origin/wall is struggling
+        result = PokemonCenterQueueAdapter().parse(page(status=status, text="<html>err</html>"))
+        assert result.status == StockStatus.IN_STOCK
+        assert result.alert_title and "Anti-Bot" in result.alert_title
+
+    def test_404_is_idle_not_an_alert(self):
+        # a wrong watch URL must not masquerade as drop activity
+        result = PokemonCenterQueueAdapter().parse(page(status=404, text="not found"))
+        assert result.status == StockStatus.OUT_OF_STOCK
+        assert "idle" in result.note
+
     def test_not_domain_resolved_but_slug_selectable(self):
         # plain pokemoncenter.com watches keep the product stub…
         assert (
