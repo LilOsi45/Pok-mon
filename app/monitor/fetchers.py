@@ -305,7 +305,11 @@ def _playwright_proxy(proxy_url: str | None) -> dict | None:
 
 
 async def fetch_playwright(
-    url: str, *, extra_headers: dict[str, str] | None = None, wait_ms: int = 2500
+    url: str,
+    *,
+    extra_headers: dict[str, str] | None = None,
+    wait_ms: int = 2500,
+    idle_timeout_ms: int = 15000,
 ) -> PageResult:
     domain = _domain(url)
     settings = get_settings()
@@ -331,6 +335,15 @@ async def fetch_playwright(
                 ),
             )
             resp = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            # A fixed sleep is a guess: on a slow run the product grid hasn't
+            # been fetched yet and we'd silently snapshot a half-empty page
+            # (scanner then reports "0 products"). Wait for the XHRs to settle
+            # first; pages that never go idle (ads, polling) still fall through
+            # to the fixed delay below.
+            try:
+                await page.wait_for_load_state("networkidle", timeout=idle_timeout_ms)
+            except Exception:  # noqa: S110 - best effort, the fixed wait still applies
+                pass
             await page.wait_for_timeout(wait_ms)
             html = await page.content()
             status = resp.status if resp else 0
