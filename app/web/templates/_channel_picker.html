@@ -1,0 +1,19 @@
+{# Channel picker shared by the watch and scanner forms.
+   Offers every "channel:<tag>" route the configured notifiers listen on, so
+   the tags never have to be typed from memory. Falls back to the plain text
+   field when no notifier declares a channel route. #}
+{% if channel_options %}
+<div class="channel-picker">
+  {% for tag, notifiers in channel_options %}
+  <label class="channel-chip" title="{{ notifiers }}">
+    <input type="checkbox" name="channels" value="{{ tag }}" {{ 'checked' if tag in channel_selected }}>
+    <span>{{ tag }}</span>
+  </label>
+  {% endfor %}
+</div>
+<input class="channel-extra" name="channels_extra" placeholder="Weitere, kommagetrennt (optional)" value="{{ channel_custom }}">
+<p class="muted small channel-hint">Nichts angehakt = geht an den Standard-Channel des Spiels.</p>
+{% else %}
+<input name="channels_extra" placeholder="pokemon, hot-drops" value="{{ channel_custom }}">
+<p class="muted small channel-hint">Noch keine Channels in der <code>config.yaml</code> hinterlegt — trag sie dort als <code>channel:&lt;name&gt;</code>-Route ein, dann erscheinen sie hier zum Anklicken.</p>
+{% endif %}

@@ -29,9 +29,9 @@
       <label for="s-exclude">Ausschließen (optional)</label>
       <input id="s-exclude" name="exclude_keywords" placeholder="sleeves, einzelkarte" value="{{ scan.exclude_keywords|join(', ') if scan else '' }}">
     </div>
-    <div>
-      <label for="s-channels">Channels (optional)</label>
-      <input id="s-channels" name="channels" placeholder="pokemon" value="{{ scan.channels|join(', ') if scan else '' }}">
+    <div class="span-2">
+      <label>Channels — anklicken, wo der Ping landen soll</label>
+      {% include "_channel_picker.html" %}
     </div>
     <div>
       <label for="s-pw" style="text-transform:none">Browser-Modus (JS-lastige Shops)</label>

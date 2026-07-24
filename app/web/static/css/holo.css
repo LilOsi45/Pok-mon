@@ -222,6 +222,37 @@ input:focus, select:focus {
 .form-grid .span-2 { grid-column: span 2; }
 .form-actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; }
 
+/* ---------- channel picker (tap instead of type) ---------- */
+.channel-picker { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.5rem; }
+
+.channel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.channel-chip:hover { border-color: var(--primary); color: var(--text); }
+.channel-chip input { width: auto; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.channel-chip:has(input:checked) {
+  border-color: var(--primary);
+  background: rgba(139, 92, 246, 0.16);
+  color: var(--text);
+}
+.channel-extra { font-size: 0.85rem; }
+.channel-hint { margin: 0.4rem 0 0; }
+
 /* ---------- misc ---------- */
 .flash {
   padding: 0.7rem 1rem;

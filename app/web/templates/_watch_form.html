@@ -38,9 +38,9 @@
       <label for="f-cooldown">Cooldown (s)</label>
       <input id="f-cooldown" name="cooldown_seconds" type="number" min="0" value="{{ watch.cooldown_seconds if watch else defaults.cooldown }}">
     </div>
-    <div>
-      <label for="f-channels">Channels (comma-sep.)</label>
-      <input id="f-channels" name="channels" placeholder="pokemon, hot-drops" value="{{ watch.channels|join(', ') if watch else '' }}">
+    <div class="span-2">
+      <label>Channels — anklicken, wo der Ping landen soll</label>
+      {% include "_channel_picker.html" %}
     </div>
     <div>
       <label for="f-price-target">Preisalarm ab (€, optional)</label>

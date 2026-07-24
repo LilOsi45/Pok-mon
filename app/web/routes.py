@@ -96,7 +96,48 @@ async def _watch_rows(session: AsyncSession) -> list[Watch]:
     )
 
 
-def _watch_form_context(watch: Watch | None = None) -> dict:
+async def _channel_options(session: AsyncSession) -> list[tuple[str, str]]:
+    """Channel tags that a notifier actually listens on -> [(tag, notifier names)].
+
+    Derived from the configured notifiers' "channel:<tag>" routes, so the form
+    can offer exactly the Discord channels that are wired up instead of making
+    the user remember and re-type the tags.
+    """
+    found: dict[str, list[str]] = {}
+    for notifier in await load_notifiers(session):
+        for route in notifier.routes:
+            if not route.startswith("channel:"):
+                continue
+            tag = route.removeprefix("channel:").strip()
+            if not tag or "*" in tag:
+                continue
+            names = found.setdefault(tag, [])
+            if notifier.name not in names:
+                names.append(notifier.name)
+    return sorted((tag, ", ".join(names)) for tag, names in found.items())
+
+
+def _channel_context(options: list[tuple[str, str]], selected: list[str]) -> dict:
+    """Split the stored channels into "ticked boxes" and free-text leftovers."""
+    known = {tag for tag, _ in options}
+    return {
+        "channel_options": options,
+        "channel_selected": selected,
+        "channel_custom": ", ".join(c for c in selected if c not in known),
+    }
+
+
+def merge_channels(selected: list[str], extra: str) -> list[str]:
+    """Checkbox picks + the optional free-text field, de-duplicated in order."""
+    merged: list[str] = []
+    for value in [*selected, *extra.split(",")]:
+        tag = value.strip()
+        if tag and tag not in merged:
+            merged.append(tag)
+    return merged
+
+
+async def _watch_form_context(session: AsyncSession, watch: Watch | None = None) -> dict:
     return {
         "watch": watch,
         "games": [
@@ -107,6 +148,9 @@ def _watch_form_context(watch: Watch | None = None) -> dict:
             "interval": get_settings().default_poll_interval_seconds,
             "cooldown": get_settings().default_cooldown_seconds,
         },
+        **_channel_context(
+            await _channel_options(session), list(watch.channels or []) if watch else []
+        ),
     }
 
 
@@ -121,7 +165,7 @@ async def watches_page(request: Request, session: AsyncSession = Depends(get_ses
     return templates.TemplateResponse(
         request,
         "watches.html",
-        {"active": "watches", "watches": watches, **_watch_form_context()},
+        {"active": "watches", "watches": watches, **await _watch_form_context(session)},
     )
 
 
@@ -141,7 +185,7 @@ def _apply_watch_form(
     adapter: str,
     interval_seconds: int,
     cooldown_seconds: int,
-    channels: str,
+    channels: list[str],
     price_target: str = "",
     priority: str = "",
     notify_on_first_seen: str = "",
@@ -155,7 +199,7 @@ def _apply_watch_form(
     watch.adapter = adapter or None
     watch.interval_seconds = max(60, interval_seconds)
     watch.cooldown_seconds = max(0, cooldown_seconds)
-    watch.channels = [c.strip() for c in channels.split(",") if c.strip()] or [game]
+    watch.channels = channels or [game]
     new_target = parse_german_price(price_target) if price_target.strip() else None
     if new_target != watch.price_target:
         watch.price_target_hit = False  # rearm on target change
@@ -181,7 +225,8 @@ async def create_watch(
     adapter: str = Form(""),
     interval_seconds: int = Form(300),
     cooldown_seconds: int = Form(1800),
-    channels: str = Form(""),
+    channels: list[str] = Form([]),
+    channels_extra: str = Form(""),
     price_target: str = Form(""),
     priority: str = Form(""),
     notify_on_first_seen: str = Form(""),
@@ -196,7 +241,7 @@ async def create_watch(
         adapter,
         interval_seconds,
         cooldown_seconds,
-        channels,
+        merge_channels(channels, channels_extra),
         price_target,
         priority,
         notify_on_first_seen,
@@ -214,7 +259,9 @@ async def edit_watch_form(
     watch = await session.get(Watch, watch_id)
     if watch is None:
         return HTMLResponse("Not found", status_code=404)
-    return templates.TemplateResponse(request, "_watch_form.html", _watch_form_context(watch))
+    return templates.TemplateResponse(
+        request, "_watch_form.html", await _watch_form_context(session, watch)
+    )
 
 
 @protected.post("/watches/{watch_id}")
@@ -229,7 +276,8 @@ async def update_watch(
     adapter: str = Form(""),
     interval_seconds: int = Form(300),
     cooldown_seconds: int = Form(1800),
-    channels: str = Form(""),
+    channels: list[str] = Form([]),
+    channels_extra: str = Form(""),
     price_target: str = Form(""),
     priority: str = Form(""),
     notify_on_first_seen: str = Form(""),
@@ -246,7 +294,7 @@ async def update_watch(
         adapter,
         interval_seconds,
         cooldown_seconds,
-        channels,
+        merge_channels(channels, channels_extra),
         price_target,
         priority,
         notify_on_first_seen,
@@ -398,6 +446,9 @@ async def _scan_context(session: AsyncSession, scan: ProductScan | None = None) 
         "games": [
             (g.value, "Pokémon TCG" if g == Game.POKEMON else "One Piece Card Game") for g in Game
         ],
+        **_channel_context(
+            await _channel_options(session), list(scan.channels or []) if scan else []
+        ),
     }
 
 
@@ -409,7 +460,7 @@ def _apply_scan_form(
     keywords: str,
     exclude_keywords: str,
     interval_seconds: int,
-    channels: str,
+    channels: list[str],
     use_playwright: str,
     priority: str = "",
 ) -> None:
@@ -419,7 +470,7 @@ def _apply_scan_form(
     scan.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
     scan.exclude_keywords = [k.strip() for k in exclude_keywords.split(",") if k.strip()]
     scan.interval_seconds = max(300, interval_seconds)
-    scan.channels = [c.strip() for c in channels.split(",") if c.strip()] or [game]
+    scan.channels = channels or [game]
     scan.use_playwright = use_playwright == "on"
     scan.priority = priority == "on"
 
@@ -440,7 +491,8 @@ async def create_scan(
     keywords: str = Form(...),
     exclude_keywords: str = Form(""),
     interval_seconds: int = Form(900),
-    channels: str = Form(""),
+    channels: list[str] = Form([]),
+    channels_extra: str = Form(""),
     use_playwright: str = Form(""),
     priority: str = Form(""),
 ):
@@ -453,7 +505,7 @@ async def create_scan(
         keywords,
         exclude_keywords,
         interval_seconds,
-        channels,
+        merge_channels(channels, channels_extra),
         use_playwright,
         priority,
     )
@@ -485,7 +537,8 @@ async def update_scan(
     keywords: str = Form(...),
     exclude_keywords: str = Form(""),
     interval_seconds: int = Form(900),
-    channels: str = Form(""),
+    channels: list[str] = Form([]),
+    channels_extra: str = Form(""),
     use_playwright: str = Form(""),
     priority: str = Form(""),
 ):
@@ -500,7 +553,7 @@ async def update_scan(
         keywords,
         exclude_keywords,
         interval_seconds,
-        channels,
+        merge_channels(channels, channels_extra),
         use_playwright,
         priority,
     )
