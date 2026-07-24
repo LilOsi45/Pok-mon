@@ -194,3 +194,23 @@ async def test_fetch_error_recorded_no_baseline(session):
     assert "503" in scan.last_error
     items = (await session.execute(select(ScanItem))).scalars().all()
     assert items == []
+
+
+class TestScanDebugExplain:
+    """The scan_debug report must name the keyword that filtered a product out."""
+
+    def test_names_the_missing_keyword(self):
+        from app.scan_debug import _explain
+
+        assert _explain("Pokémon Top-Trainer-Box", ["pokemon", "display"], []) == "fehlt: 'display'"
+
+    def test_reports_the_exclude_that_hit(self):
+        from app.scan_debug import _explain
+
+        verdict = _explain("Pokémon Sleeves Pikachu", ["pokemon"], ["sleeves"])
+        assert verdict == "ausgeschlossen durch: 'sleeves'"
+
+    def test_accent_insensitive_hit(self):
+        from app.scan_debug import _explain
+
+        assert _explain("Pokémon Booster Display", ["pokemon", "display"], []) == "TREFFER"
