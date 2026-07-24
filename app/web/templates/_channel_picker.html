@@ -12,7 +12,7 @@
   {% endfor %}
 </div>
 <input class="channel-extra" name="channels_extra" placeholder="Weitere, kommagetrennt (optional)" value="{{ channel_custom }}">
-<p class="muted small channel-hint">Nichts angehakt = geht an den Standard-Channel des Spiels.</p>
+<p class="muted small channel-hint">Am besten immer mindestens einen anhaken. Ohne Haken geht der Ping nur an die Standard-Route des Spiels (<code>stock:pokemon</code> bzw. <code>stock:one_piece</code>) — die muss in der <code>config.yaml</code> extra verdrahtet sein, sonst verpufft er still.</p>
 {% else %}
 <input name="channels_extra" placeholder="pokemon, hot-drops" value="{{ channel_custom }}">
 <p class="muted small channel-hint">Noch keine Channels in der <code>config.yaml</code> hinterlegt — trag sie dort als <code>channel:&lt;name&gt;</code>-Route ein, dann erscheinen sie hier zum Anklicken.</p>
