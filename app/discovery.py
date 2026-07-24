@@ -162,14 +162,21 @@ async def search_web(query: str, limit: int = 20) -> list[SearchHit]:
             if r.get("url")
         ][:limit]
 
-    # Keyless fallback: DDG HTML endpoint. Used sparingly (default 6h interval).
+    # Keyless fallback: DuckDuckGo HTML endpoint. DDG blocks datacenter/proxy
+    # IPs (HTTP 202), so route it through the scraping API when available;
+    # otherwise a plain fetch (works only from a clean IP). Low frequency
+    # (default 6h interval) keeps the cost negligible.
     from app.monitor import fetchers
 
-    page = await fetchers.fetch_httpx(
-        f"https://html.duckduckgo.com/html/?q={quote_plus(query)}",
-        respect_robots=False,  # deliberate: low-frequency search, or set BRAVE_API_KEY
-        extra_headers={"Referer": "https://duckduckgo.com/"},
-    )
+    ddg_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+    if settings.scraper_api_key:
+        page = await fetchers.fetch_scraperapi(ddg_url)
+    else:
+        page = await fetchers.fetch_httpx(
+            ddg_url,
+            respect_robots=False,
+            extra_headers={"Referer": "https://duckduckgo.com/"},
+        )
     if page.status_code != 200:
         raise RuntimeError(f"search returned HTTP {page.status_code}")
     return parse_ddg_html(page.text)[:limit]
