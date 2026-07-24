@@ -37,9 +37,14 @@ def evaluate_transition(watch: Watch, result: StockResult) -> EventType | None:
     in_stock = result.status == StockStatus.IN_STOCK
 
     if result.listed and not previously_listed:
-        if is_first_check and not watch.notify_on_first_seen:
-            return None  # baseline quietly; don't spam on watch creation
-        return EventType.NEW_LISTING
+        if is_first_check:
+            # "Auch melden, wenn schon verfügbar" — only ping the very first
+            # check when the product is actually in stock (not for an already
+            # sold-out product); otherwise record the baseline silently.
+            if watch.notify_on_first_seen and in_stock:
+                return EventType.NEW_LISTING
+            return None
+        return EventType.NEW_LISTING  # genuinely appeared later (was unlisted)
 
     if (
         in_stock
@@ -80,8 +85,10 @@ def _build_event(watch: Watch, result: StockResult, event_type: EventType) -> Ev
         title = f"{result.alert_title}: {watch.label}"
     elif event_type == EventType.BACK_IN_STOCK:
         title = f"Back in stock: {watch.label}"
-    else:
-        title = f"New listing: {watch.label}"
+    elif result.status == StockStatus.IN_STOCK:
+        title = f"Neu gelistet – verfügbar: {watch.label}"
+    else:  # new listing that is not (yet) buyable, e.g. preorder / sold out
+        title = f"Neu gelistet – noch nicht verfügbar: {watch.label}"
     retailer = watch.retailer or (watch.last_buy_url or watch.url).split("/")[2]
     message = result.title or ""
     return Event(

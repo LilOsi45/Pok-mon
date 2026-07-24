@@ -21,6 +21,11 @@ class TestFirstCheck:
         watch.notify_on_first_seen = True
         assert evaluate_transition(watch, result(StockStatus.IN_STOCK)) == EventType.NEW_LISTING
 
+    def test_first_check_optin_but_oos_is_silent(self, watch: Watch):
+        # "also notify if already available" must NOT ping a sold-out product
+        watch.notify_on_first_seen = True
+        assert evaluate_transition(watch, result(StockStatus.OUT_OF_STOCK)) is None
+
     def test_first_check_not_listed_no_event(self, watch: Watch):
         assert evaluate_transition(watch, result(StockStatus.UNKNOWN, listed=False)) is None
 
