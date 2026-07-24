@@ -19,6 +19,10 @@ class Event:
     image_url: str | None = None
     price: float | None = None
     currency: str | None = None
+    # Cardmarket reference so the ping shows whether the shop price is a deal
+    cardmarket_trend: float | None = None
+    cardmarket_low: float | None = None
+    cardmarket_url: str | None = None
     retailer: str | None = None
     watch_id: int | None = None
     news_id: int | None = None

@@ -138,6 +138,28 @@ def evaluate_price_target(watch: Watch, result: StockResult) -> Event | None:
     return None
 
 
+async def attach_cardmarket(watch: Watch, event: Event) -> None:
+    """Enrich an alert with the Cardmarket reference price (best effort).
+
+    Never raises: a Cardmarket outage or missing API key must not swallow the
+    restock ping, it just leaves the reference field off.
+    """
+    if watch.cardmarket_id is None:
+        return
+    from app.cardmarket import price_reference
+
+    try:
+        reference = await price_reference(watch.cardmarket_id)
+    except Exception:
+        log.warning("cardmarket lookup failed for watch %s", watch.id, exc_info=True)
+        return
+    if reference is None:
+        return
+    event.cardmarket_trend = reference.trend
+    event.cardmarket_low = reference.low
+    event.cardmarket_url = reference.url
+
+
 async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
     """Run one check for a watch. Commits. Never raises on adapter errors."""
     adapter = resolve_adapter(watch.url, watch.adapter, dict(watch.detection or {}))
@@ -167,6 +189,8 @@ async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
                 watch.price_target_hit = True
         else:
             event = evaluate_price_target(watch, result)
+        if event is not None:
+            await attach_cardmarket(watch, event)
         _apply_result(watch, result)
         log.info(
             "checked watch %s [%s] -> %s (%s)",

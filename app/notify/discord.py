@@ -48,6 +48,23 @@ EVENT_EMOJI: dict[EventType, str] = {
 GAME_LABEL = {Game.POKEMON: "Pokémon TCG", Game.ONE_PIECE: "One Piece Card Game"}
 
 
+def _cardmarket_value(event: Event) -> str | None:
+    """Reference block: market trend, cheapest listing, delta to the shop price."""
+    if event.cardmarket_trend is None and event.cardmarket_low is None:
+        return None
+    lines: list[str] = []
+    if event.cardmarket_trend is not None:
+        lines.append(f"Trend **{event.cardmarket_trend:.2f} €**")
+    if event.cardmarket_low is not None:
+        lines.append(f"ab {event.cardmarket_low:.2f} €")
+    reference = event.cardmarket_trend if event.cardmarket_trend is not None else event.cardmarket_low
+    if event.price is not None and reference is not None:
+        delta = reference - event.price
+        if abs(delta) >= 0.5:  # ignore cent-level noise
+            lines.append(f"🟢 {delta:.2f} € günstiger" if delta > 0 else f"🔴 {-delta:.2f} € teurer")
+    return "\n".join(lines)
+
+
 def build_embed(event: Event) -> dict:
     emoji = EVENT_EMOJI.get(event.type, "🔔")
     embed: dict = {
@@ -75,10 +92,14 @@ def build_embed(event: Event) -> dict:
         embed["fields"].append(
             {"name": "Price", "value": f"{event.price:.2f} {symbol}", "inline": True}
         )
+    if (cardmarket := _cardmarket_value(event)) is not None:
+        embed["fields"].append({"name": "Cardmarket", "value": cardmarket, "inline": True})
     if event.url and event.is_stock_event:
         links = f"[🔗 Produktseite]({event.url})"
         if event.cart_url:  # Shopify one-tap add-to-cart
             links += f"  ·  [🛒 In den Warenkorb]({event.cart_url})"
+        if event.cardmarket_url:
+            links += f"  ·  [📊 Cardmarket]({event.cardmarket_url})"
         embed["fields"].append({"name": "Kaufen", "value": links})
     if event.is_stock_event and get_settings().show_other_shops:
         # product search across the other big (Trustpilot-vetted) shops

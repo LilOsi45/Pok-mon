@@ -189,6 +189,7 @@ def _apply_watch_form(
     price_target: str = "",
     priority: str = "",
     notify_on_first_seen: str = "",
+    cardmarket_id: str = "",
 ) -> None:
     from app.monitor.detection import parse_german_price
 
@@ -204,6 +205,7 @@ def _apply_watch_form(
     if new_target != watch.price_target:
         watch.price_target_hit = False  # rearm on target change
     watch.price_target = new_target
+    watch.cardmarket_id = int(cardmarket_id) if cardmarket_id.strip().isdigit() else None
     watch.priority = priority == "on"
     was_first_seen = watch.notify_on_first_seen
     watch.notify_on_first_seen = notify_on_first_seen == "on"
@@ -230,6 +232,7 @@ async def create_watch(
     price_target: str = Form(""),
     priority: str = Form(""),
     notify_on_first_seen: str = Form(""),
+    cardmarket_id: str = Form(""),
 ):
     watch = Watch()
     _apply_watch_form(
@@ -245,6 +248,7 @@ async def create_watch(
         price_target,
         priority,
         notify_on_first_seen,
+        cardmarket_id,
     )
     session.add(watch)
     await session.commit()
@@ -281,6 +285,7 @@ async def update_watch(
     price_target: str = Form(""),
     priority: str = Form(""),
     notify_on_first_seen: str = Form(""),
+    cardmarket_id: str = Form(""),
 ):
     watch = await session.get(Watch, watch_id)
     if watch is None:
@@ -298,6 +303,7 @@ async def update_watch(
         price_target,
         priority,
         notify_on_first_seen,
+        cardmarket_id,
     )
     await session.commit()
     schedule_watch(watch)

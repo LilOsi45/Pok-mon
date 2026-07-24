@@ -48,6 +48,11 @@
              value="{{ '%.2f'|format(watch.price_target) if watch and watch.price_target else '' }}">
     </div>
     <div>
+      <label for="f-cardmarket">Cardmarket-Produkt-ID (optional)</label>
+      <input id="f-cardmarket" name="cardmarket_id" inputmode="numeric" placeholder="z. B. 771234"
+             value="{{ watch.cardmarket_id if watch and watch.cardmarket_id else '' }}">
+    </div>
+    <div>
       <label for="f-priority" style="text-transform:none">Wichtig — @everyone-Ping 🔔</label>
       <input id="f-priority" name="priority" type="checkbox" style="width:auto" {{ 'checked' if watch and watch.priority }}>
     </div>

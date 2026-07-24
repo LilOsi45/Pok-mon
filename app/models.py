@@ -80,6 +80,9 @@ class Watch(Base):
     # price alert: ping once when in stock at/below this price (rearms above it)
     price_target: Mapped[float | None] = mapped_column(Float, default=None)
     price_target_hit: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Cardmarket product id — adds a reference price to the alert. Pinning the
+    # id also pins the language (Cardmarket lists sealed products per language).
+    cardmarket_id: Mapped[int | None] = mapped_column(Integer, default=None)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
