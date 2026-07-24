@@ -1,0 +1,14 @@
+# Reverse proxy + automatic HTTPS (Let's Encrypt) for the dashboard.
+#
+# The domain comes from the DOMAIN variable in .env, e.g.
+#   DOMAIN=tracker.deinedomain.de
+# Point a DNS A-record for that name to the server's IP first, then start
+# Caddy with:  docker compose --profile https up -d
+#
+# Caddy fetches and auto-renews the TLS certificate on its own — nothing
+# else to configure.
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

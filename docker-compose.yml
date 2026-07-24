@@ -17,6 +17,25 @@ services:
       timeout: 5s
       retries: 3
 
+  # Optional HTTPS reverse proxy (Caddy + automatic Let's Encrypt).
+  # Set DOMAIN=tracker.deinedomain.de in .env, point its DNS A-record at the
+  # server, then start with:  docker compose --profile https up -d
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
   # Optional Postgres — enable with:  docker compose --profile postgres up -d
   # and set in .env: DATABASE_URL=postgresql+asyncpg://tcg:tcg@db:5432/tcg
   db:
@@ -32,3 +51,5 @@ services:
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
