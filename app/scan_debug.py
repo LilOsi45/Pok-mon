@@ -121,11 +121,23 @@ async def debug_scan(scan_id: int) -> None:
         )
 
 
+async def _run(scan_id: int) -> None:
+    """Report, then shut the fetchers down — an un-closed Playwright subprocess
+    spews 'Event loop is closed' tracebacks at interpreter exit."""
+    from app.monitor.fetchers import close_client, shutdown_playwright
+
+    try:
+        await debug_scan(scan_id)
+    finally:
+        await shutdown_playwright()
+        await close_client()
+
+
 def main() -> None:
     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
         print("Aufruf: python -m app.scan_debug <scanner-id>")
         raise SystemExit(2)
-    asyncio.run(debug_scan(int(sys.argv[1])))
+    asyncio.run(_run(int(sys.argv[1])))
 
 
 if __name__ == "__main__":
