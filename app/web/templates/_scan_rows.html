@@ -19,13 +19,16 @@
   <td data-label="Letzter Lauf" class="muted small" title="{{ s.last_check_at|local_dt }}">{{ s.last_check_at|ago }}</td>
   <td>
     <div class="row-actions" style="display:flex; gap:0.35rem; justify-content:flex-end">
-      <button class="btn btn-sm" hx-post="/scanner/{{ s.id }}/check" hx-target="#scan-rows" hx-swap="innerHTML">Check</button>
-      <button class="btn btn-sm" hx-post="/scanner/{{ s.id }}/toggle" hx-target="#scan-rows" hx-swap="innerHTML">
+      {# see _watch_rows.html — delegated via rows.js, not hx-* per button #}
+      <button class="btn btn-sm" data-url="/scanner/{{ s.id }}/check" data-target="#scan-rows">Check</button>
+      <button class="btn btn-sm" data-url="/scanner/{{ s.id }}/toggle" data-target="#scan-rows">
         {{ 'Pause' if s.enabled else 'Start' }}
       </button>
-      <button class="btn btn-sm" hx-get="/scanner/{{ s.id }}/edit" hx-target="#scan-form-slot" hx-swap="innerHTML">Edit</button>
-      <button class="btn btn-sm btn-danger" hx-post="/scanner/{{ s.id }}/delete" hx-target="#scan-rows" hx-swap="innerHTML"
-              hx-confirm="Scanner „{{ s.label }}“ löschen?">✕</button>
+      <button class="btn btn-sm" data-url="/scanner/{{ s.id }}/edit" data-method="GET"
+              data-target="#scan-form-slot">Edit</button>
+      <button class="btn btn-sm btn-danger" data-url="/scanner/{{ s.id }}/delete"
+              data-target="#scan-rows"
+              data-confirm="Scanner „{{ s.label }}“ löschen?">✕</button>
     </div>
   </td>
 </tr>

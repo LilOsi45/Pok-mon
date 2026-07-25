@@ -25,19 +25,23 @@
   <td data-label="Last in stock" class="muted small" title="{{ w.last_in_stock_at|local_dt }}">{{ w.last_in_stock_at|ago }}</td>
   <td>
     <div class="row-actions" style="display:flex; gap:0.35rem; justify-content:flex-end">
+      {# data-* instead of hx-*: handled by one delegated listener (rows.js) so
+         a table refresh doesn't re-initialise hundreds of htmx elements #}
       <button class="btn btn-sm" title="Check now"
-              hx-post="/watches/{{ w.id }}/check" hx-target="#watch-rows" hx-swap="innerHTML">Check</button>
+              data-url="/watches/{{ w.id }}/check" data-target="#watch-rows">Check</button>
       <button class="btn btn-sm" title="{{ 'Pause' if w.enabled else 'Resume' }}"
-              hx-post="/watches/{{ w.id }}/toggle" hx-target="#watch-rows" hx-swap="innerHTML">
+              data-url="/watches/{{ w.id }}/toggle" data-target="#watch-rows">
         {{ 'Pause' if w.enabled else 'Resume' }}
       </button>
       <button class="btn btn-sm" title="Preisverlauf"
-              hx-get="/watches/{{ w.id }}/history" hx-target="#watch-detail-slot" hx-swap="innerHTML">📈</button>
+              data-url="/watches/{{ w.id }}/history" data-method="GET"
+              data-target="#watch-detail-slot">📈</button>
       <button class="btn btn-sm" title="Edit"
-              hx-get="/watches/{{ w.id }}/edit" hx-target="#watch-form-slot" hx-swap="innerHTML">Edit</button>
+              data-url="/watches/{{ w.id }}/edit" data-method="GET"
+              data-target="#watch-form-slot">Edit</button>
       <button class="btn btn-sm btn-danger" title="Delete"
-              hx-post="/watches/{{ w.id }}/delete" hx-target="#watch-rows" hx-swap="innerHTML"
-              hx-confirm="Delete watch “{{ w.label }}”?">✕</button>
+              data-url="/watches/{{ w.id }}/delete" data-target="#watch-rows"
+              data-confirm="Watch „{{ w.label }}“ löschen?">✕</button>
     </div>
   </td>
 </tr>

@@ -29,7 +29,7 @@
           <th>Last check</th><th>Last in stock</th><th style="text-align:right">Actions</th>
         </tr>
       </thead>
-      <tbody id="watch-rows" hx-get="/watches/table" hx-trigger="every 30s" hx-swap="innerHTML">
+      <tbody id="watch-rows" hx-get="/watches/table" hx-trigger="every 60s [document.visibilityState === 'visible']" hx-swap="innerHTML">
         {% include "_watch_rows.html" %}
       </tbody>
     </table>

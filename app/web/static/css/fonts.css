@@ -1,0 +1,18 @@
+/* Self-hosted Space Grotesk (latin subset, variable weight 300–700).
+ *
+ * This used to come from fonts.googleapis.com as a render-blocking stylesheet
+ * on a third-party host: until Google answered, mobile Safari painted nothing.
+ * Since every form submit does a full page load, that showed up as a blank
+ * white/black screen right after adding a watch. Served from our own domain
+ * the page paints immediately — and it keeps working offline.
+ *
+ * It is a variable font, so one file covers every weight; declaring the range
+ * instead of four separate faces avoids three redundant 22 KB downloads.
+ */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/static/fonts/space-grotesk.woff2') format('woff2');
+}

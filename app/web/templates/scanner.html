@@ -20,7 +20,7 @@
           <th>Letzter Lauf</th><th style="text-align:right">Aktionen</th>
         </tr>
       </thead>
-      <tbody id="scan-rows" hx-get="/scanner/table" hx-trigger="every 30s" hx-swap="innerHTML">
+      <tbody id="scan-rows" hx-get="/scanner/table" hx-trigger="every 60s [document.visibilityState === 'visible']" hx-swap="innerHTML">
         {% include "_scan_rows.html" %}
       </tbody>
     </table>
