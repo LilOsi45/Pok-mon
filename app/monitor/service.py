@@ -139,25 +139,35 @@ def evaluate_price_target(watch: Watch, result: StockResult) -> Event | None:
 
 
 async def attach_cardmarket(watch: Watch, event: Event) -> None:
-    """Enrich an alert with the Cardmarket reference price (best effort).
+    """Enrich an alert with a reference price so the shop price can be judged.
 
-    Never raises: a Cardmarket outage or missing API key must not swallow the
-    restock ping, it just leaves the reference field off.
+    Prefers the live Cardmarket price guide (watch.cardmarket_id); falls back to
+    the manually entered reference_price/_url, which is the only path available
+    while Cardmarket is not handing out API access.
+
+    Never raises: an outage or missing API key must not swallow a restock ping,
+    it just leaves the reference field off.
     """
-    if watch.cardmarket_id is None:
-        return
-    from app.cardmarket import price_reference
+    if watch.cardmarket_id is not None:
+        from app.cardmarket import price_reference
 
-    try:
-        reference = await price_reference(watch.cardmarket_id)
-    except Exception:
-        log.warning("cardmarket lookup failed for watch %s", watch.id, exc_info=True)
-        return
-    if reference is None:
-        return
-    event.cardmarket_trend = reference.trend
-    event.cardmarket_low = reference.low
-    event.cardmarket_url = reference.url
+        try:
+            reference = await price_reference(watch.cardmarket_id)
+        except Exception:
+            log.warning("cardmarket lookup failed for watch %s", watch.id, exc_info=True)
+            reference = None
+        if reference is not None and reference.has_price:
+            event.cardmarket_trend = reference.trend
+            event.cardmarket_low = reference.low
+            event.cardmarket_url = reference.url or watch.reference_url
+            event.cardmarket_live = True
+            return
+
+    if watch.reference_price is not None:
+        event.cardmarket_trend = watch.reference_price
+        event.cardmarket_live = False
+    if watch.reference_url:
+        event.cardmarket_url = watch.reference_url
 
 
 async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:

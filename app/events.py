@@ -19,10 +19,13 @@ class Event:
     image_url: str | None = None
     price: float | None = None
     currency: str | None = None
-    # Cardmarket reference so the ping shows whether the shop price is a deal
+    # Cardmarket reference so the ping shows whether the shop price is a deal.
+    # cardmarket_live marks an API price guide (labelled "Trend") as opposed to
+    # a manually entered reference number.
     cardmarket_trend: float | None = None
     cardmarket_low: float | None = None
     cardmarket_url: str | None = None
+    cardmarket_live: bool = False
     retailer: str | None = None
     watch_id: int | None = None
     news_id: int | None = None

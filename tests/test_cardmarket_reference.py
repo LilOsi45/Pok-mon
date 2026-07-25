@@ -193,3 +193,66 @@ class TestFullCheckFlow:
         event = dispatched.call_args.args[1]
         assert event.cardmarket_trend == 89.9
         assert event.cardmarket_url == "https://cm/x"
+
+
+class TestManualReference:
+    """Cardmarket stopped granting API access — the manual path must carry it."""
+
+    def _watch(self, **kw) -> Watch:
+        base = dict(id=1, game=Game.POKEMON, label="Display", url="https://shop.example/p")
+        return Watch(**{**base, **kw})
+
+    def _event(self) -> Event:
+        return Event(type=EventType.BACK_IN_STOCK, game=Game.POKEMON, title="t", price=74.99)
+
+    @pytest.mark.asyncio
+    async def test_manual_price_and_link_are_used(self):
+        event = self._event()
+        watch = self._watch(reference_price=89.9, reference_url="https://www.cardmarket.com/de/x")
+        await attach_cardmarket(watch, event)
+        assert event.cardmarket_trend == 89.9
+        assert event.cardmarket_url == "https://www.cardmarket.com/de/x"
+        assert event.cardmarket_live is False
+
+    @pytest.mark.asyncio
+    async def test_manual_only_a_link_still_shows_the_button(self):
+        event = self._event()
+        await attach_cardmarket(self._watch(reference_url="https://cm/x"), event)
+        assert event.cardmarket_url == "https://cm/x"
+        assert event.cardmarket_trend is None
+
+    @pytest.mark.asyncio
+    async def test_live_api_price_wins_over_the_manual_one(self):
+        event = self._event()
+        ref = cardmarket.PriceReference(7, "X", trend=95.0, low=88.0, url="https://cm/live")
+        watch = self._watch(cardmarket_id=7, reference_price=89.9, reference_url="https://cm/manual")
+        with patch("app.cardmarket.price_reference", AsyncMock(return_value=ref)):
+            await attach_cardmarket(watch, event)
+        assert event.cardmarket_trend == 95.0
+        assert event.cardmarket_live is True
+
+    @pytest.mark.asyncio
+    async def test_api_denied_falls_back_to_the_manual_price(self):
+        # exactly today's situation: credentials rejected -> price_reference None
+        event = self._event()
+        watch = self._watch(cardmarket_id=7, reference_price=89.9, reference_url="https://cm/x")
+        with patch("app.cardmarket.price_reference", AsyncMock(return_value=None)):
+            await attach_cardmarket(watch, event)
+        assert event.cardmarket_trend == 89.9
+        assert event.cardmarket_live is False
+
+    def test_manual_price_renders_without_the_trend_label(self):
+        embed = build_embed(
+            Event(
+                type=EventType.BACK_IN_STOCK,
+                game=Game.POKEMON,
+                title="t",
+                url="https://shop.example/p",
+                price=74.99,
+                cardmarket_trend=89.9,
+                cardmarket_live=False,
+            )
+        )
+        value = next(f["value"] for f in embed["fields"] if f["name"] == "Cardmarket")
+        assert "Trend" not in value
+        assert "89.90" in value and "🟢" in value

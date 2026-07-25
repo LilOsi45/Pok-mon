@@ -48,7 +48,17 @@
              value="{{ '%.2f'|format(watch.price_target) if watch and watch.price_target else '' }}">
     </div>
     <div>
-      <label for="f-cardmarket">Cardmarket-Produkt-ID (optional)</label>
+      <label for="f-ref-price">Cardmarket-Referenzpreis (€, optional)</label>
+      <input id="f-ref-price" name="reference_price" inputmode="decimal" placeholder="z. B. 89,90"
+             value="{{ '%.2f'|format(watch.reference_price) if watch and watch.reference_price else '' }}">
+    </div>
+    <div class="span-2">
+      <label for="f-ref-url">Cardmarket-Link zum Produkt (optional)</label>
+      <input id="f-ref-url" name="reference_url" type="url" placeholder="https://www.cardmarket.com/de/…"
+             value="{{ watch.reference_url or '' if watch else '' }}">
+    </div>
+    <div>
+      <label for="f-cardmarket">Cardmarket-Produkt-ID (nur mit API-Zugang)</label>
       <input id="f-cardmarket" name="cardmarket_id" inputmode="numeric" placeholder="z. B. 771234"
              value="{{ watch.cardmarket_id if watch and watch.cardmarket_id else '' }}">
     </div>

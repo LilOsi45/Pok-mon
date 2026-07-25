@@ -54,7 +54,8 @@ def _cardmarket_value(event: Event) -> str | None:
         return None
     lines: list[str] = []
     if event.cardmarket_trend is not None:
-        lines.append(f"Trend **{event.cardmarket_trend:.2f} €**")
+        label = "Trend " if event.cardmarket_live else ""
+        lines.append(f"{label}**{event.cardmarket_trend:.2f} €**")
     if event.cardmarket_low is not None:
         lines.append(f"ab {event.cardmarket_low:.2f} €")
     reference = event.cardmarket_trend if event.cardmarket_trend is not None else event.cardmarket_low
