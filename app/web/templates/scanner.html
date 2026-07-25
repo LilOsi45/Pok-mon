@@ -4,6 +4,14 @@
 <h1 class="page-title">Produkt-Scanner</h1>
 
 <div class="card">
+  <div class="table-toolbar">
+    <button class="btn btn-sm" id="check-all-scans"
+            hx-post="/scanner/check-all" hx-target="#scan-rows" hx-swap="innerHTML"
+            title="Lässt alle aktiven Scanner im Hintergrund laufen">🔄 Alle prüfen</button>
+  </div>
+  <p class="muted small sweep-hint" id="scan-sweep-hint" hidden>
+    Läuft im Hintergrund — die Tabelle aktualisiert sich alle 30 s von selbst.
+  </p>
   <div class="table-wrap">
     <table>
       <thead>
@@ -18,6 +26,12 @@
     </table>
   </div>
 </div>
+
+<script>
+  document.getElementById('check-all-scans').addEventListener('click', function () {
+    document.getElementById('scan-sweep-hint').hidden = false;
+  });
+</script>
 
 <div class="card" id="scan-form-slot">
   {% include "_scan_form.html" %}

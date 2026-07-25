@@ -11,8 +11,16 @@
 </details>
 
 <div class="card">
-  <input id="watch-search" class="watch-search" type="search"
-         placeholder="🔍 Watch suchen (Name oder Shop)…" autocomplete="off">
+  <div class="table-toolbar">
+    <input id="watch-search" class="watch-search" type="search"
+           placeholder="🔍 Watch suchen (Name oder Shop)…" autocomplete="off">
+    <button class="btn btn-sm" id="check-all-watches"
+            hx-post="/watches/check-all" hx-target="#watch-rows" hx-swap="innerHTML"
+            title="Prüft alle aktiven Watches im Hintergrund">🔄 Alle prüfen</button>
+  </div>
+  <p class="muted small sweep-hint" id="watch-sweep-hint" hidden>
+    Läuft im Hintergrund — die Tabelle aktualisiert sich alle 30 s von selbst.
+  </p>
   <div class="table-wrap">
     <table>
       <thead>
@@ -48,6 +56,12 @@
   }
   search.addEventListener('input', applyFilter);
   applyFilter();
+
+  // "Alle prüfen" returns immediately (the sweep runs in the background), so
+  // say so — otherwise the unchanged table looks like nothing happened.
+  document.getElementById('check-all-watches').addEventListener('click', function () {
+    document.getElementById('watch-sweep-hint').hidden = false;
+  });
 
   document.addEventListener('htmx:afterSwap', function (evt) {
     if (evt.target.id === 'watch-detail-slot') evt.target.style.display = 'block';

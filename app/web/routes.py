@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,40 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 protected = APIRouter(dependencies=[Depends(require_auth)])
+
+
+# ---------------------------------------------------------------------------
+# "check everything now" sweeps
+# ---------------------------------------------------------------------------
+
+_sweeping: set[str] = set()
+
+
+def sweep_running(kind: str) -> bool:
+    return kind in _sweeping
+
+
+async def run_sweep(kind: str, ids: list[int], runner: Callable[[int], Awaitable[None]]) -> None:
+    """Run `runner` for every id, one after another.
+
+    Sequential on purpose: firing 17 checks at once would hit the same shops in
+    parallel and earn a 429. One failing item must not abort the rest, and a
+    second click while a sweep is live is ignored rather than doubling the load.
+    """
+    if kind in _sweeping:
+        log.info("%s sweep already running, ignoring the request", kind)
+        return
+    _sweeping.add(kind)
+    log.info("%s sweep started for %d items", kind, len(ids))
+    try:
+        for item_id in ids:
+            try:
+                await runner(item_id)
+            except Exception:
+                log.exception("%s sweep: id %s failed", kind, item_id)
+    finally:
+        _sweeping.discard(kind)
+        log.info("%s sweep finished", kind)
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +297,23 @@ async def create_watch(
     await session.commit()
     schedule_watch(watch)
     return RedirectResponse("/watches", status_code=303)
+
+
+# NOTE: must stay above the "/watches/{watch_id}" routes — FastAPI matches in
+# definition order and would otherwise try to read "check-all" as an int id.
+@protected.post("/watches/check-all", response_class=HTMLResponse)
+async def check_all_watches(
+    request: Request, background: BackgroundTasks, session: AsyncSession = Depends(get_session)
+):
+    """Re-check every enabled watch. Runs in the background: a full sweep can
+    take minutes (the unlocker alone allows 180 s per shop), which would blow
+    the request timeout. The table polls every 30 s and fills in as results land.
+    """
+    from app.monitor.service import check_watch_by_id
+
+    ids = list((await session.scalars(select(Watch.id).where(Watch.enabled))).all())
+    background.add_task(run_sweep, "watches", ids, check_watch_by_id)
+    return templates.TemplateResponse(request, "_watch_rows.html", {"watches": await _watch_rows(session)})
 
 
 @protected.get("/watches/{watch_id}/edit", response_class=HTMLResponse)
@@ -531,6 +583,21 @@ async def create_scan(
     await session.commit()
     schedule_scan(scan)
     return RedirectResponse("/scanner", status_code=303)
+
+
+# Must stay above "/scanner/{scan_id}" — see the note on check_all_watches.
+@protected.post("/scanner/check-all", response_class=HTMLResponse)
+async def check_all_scans(
+    request: Request, background: BackgroundTasks, session: AsyncSession = Depends(get_session)
+):
+    """Run every enabled scanner once, in the background (see check_all_watches)."""
+    from app.scanner import run_scan_by_id
+
+    ids = list((await session.scalars(select(ProductScan.id).where(ProductScan.enabled))).all())
+    background.add_task(run_sweep, "scanner", ids, run_scan_by_id)
+    return templates.TemplateResponse(
+        request, "_scan_rows.html", {"scans": await _scan_rows(session)}
+    )
 
 
 @protected.get("/scanner/{scan_id}/edit", response_class=HTMLResponse)

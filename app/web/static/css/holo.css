@@ -222,6 +222,13 @@ input:focus, select:focus {
 .form-grid .span-2 { grid-column: span 2; }
 .form-actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; }
 
+/* ---------- table toolbar (search + bulk actions) ---------- */
+.table-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.75rem; }
+/* min-width keeps the search readable; the button wraps below it when narrow */
+.table-toolbar .watch-search { margin: 0; flex: 1 1 14rem; min-width: 14rem; }
+.table-toolbar .btn { flex: 0 0 auto; white-space: nowrap; }
+.sweep-hint { margin: -0.35rem 0 0.75rem; }
+
 /* ---------- channel picker (tap instead of type) ---------- */
 .channel-picker { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.5rem; }
 
