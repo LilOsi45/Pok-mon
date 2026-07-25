@@ -145,3 +145,26 @@ async def test_queue_open_transition_pings(session, watch):
     ):
         await check_watch(session, watch)
     assert dispatched.call_count == 0
+
+
+class TestWatchDebugSignals:
+    """The diagnostic must surface exactly the signals the adapter alerts on."""
+
+    def test_reports_a_queue_redirect(self):
+        from app.watch_debug import _queue_signals
+
+        hits = _queue_signals(
+            page(status=302, location="https://pokemoncenter.queue-it.net/?c=pokemoncenter")
+        )
+        assert any("Weiterleitung" in h for h in hits)
+
+    def test_reports_a_waiting_room_phrase(self):
+        from app.watch_debug import _queue_signals
+
+        hits = _queue_signals(page(text="<html>You are now in line</html>"))
+        assert any("you are now in line" in h for h in hits)
+
+    def test_quiet_page_has_no_signals(self):
+        from app.watch_debug import _queue_signals
+
+        assert _queue_signals(page(status=403, text="cmsg challenge")) == []
