@@ -8,6 +8,7 @@ so checks queued up instead of running. Serving them from one cached
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -116,6 +117,94 @@ class TestCatalogCache:
         boom = AsyncMock(side_effect=RuntimeError("network down"))
         with patch("app.monitor.fetchers.fetch_httpx", boom):
             assert await catalog.product_from_catalog(f"{SHOP}/products/x") is None
+
+
+@pytest.mark.asyncio
+class TestFailureIsCachedToo:
+    """A failed probe must be remembered, not re-run by every waiting watch.
+
+    Guard, not a past bug: the shorter retry window introduced below makes a
+    failure expire in two minutes instead of an hour, so it is now much easier
+    for 18 watches on one shop to stampede the endpoint the moment it does.
+    Both the pre-lock check and the in-lock double-check must accept a cached
+    failure as an answer.
+    """
+
+    async def test_one_failed_probe_is_not_retried_by_every_watch(self):
+        fetch = AsyncMock(return_value=catalog_page({}, status=429))
+        with patch("app.monitor.fetchers.fetch_httpx", fetch):
+            await asyncio.gather(
+                *(catalog.product_from_catalog(f"{SHOP}/products/p{i}") for i in range(18))
+            )
+        assert fetch.await_count == 1, f"{fetch.await_count} catalogue requests in one burst"
+
+    async def test_a_raising_probe_is_also_cached(self):
+        boom = AsyncMock(side_effect=RuntimeError("connection reset"))
+        with patch("app.monitor.fetchers.fetch_httpx", boom):
+            await asyncio.gather(
+                *(catalog.product_from_catalog(f"{SHOP}/products/p{i}") for i in range(10))
+            )
+        assert boom.await_count == 1
+
+
+@pytest.mark.asyncio
+class TestThrottlingIsNotAVerdict:
+    """Regression: a 429 was filed as "this shop has no catalogue" for an hour.
+
+    Every failed probe shared one negative TTL of 3600 s, so a single rate-limit
+    answer disabled the catalogue for the whole hour. The 18 per-product fetches
+    it was meant to replace kept running, kept provoking 429s, and the hourly
+    re-probe landed right back in that flood — the report showed "Katalog 0" on
+    every shop while /products.json was working fine when asked politely.
+    """
+
+    async def test_rate_limit_is_retried_soon(self):
+        assert catalog.RETRY_TTL_SECONDS < catalog.NEGATIVE_TTL_SECONDS / 10
+
+        fetch = AsyncMock(return_value=catalog_page({}, status=429))
+        with patch("app.monitor.fetchers.fetch_httpx", fetch):
+            await catalog.product_from_catalog(f"{SHOP}/products/x")
+        entry = catalog._cache["geeksheaven.de"]
+        assert entry.ttl == catalog.RETRY_TTL_SECONDS
+        assert "429" in entry.reason
+
+    async def test_a_real_non_shopify_shop_is_shelved_for_an_hour(self):
+        fetch = AsyncMock(return_value=catalog_page({"nope": True}))
+        with patch("app.monitor.fetchers.fetch_httpx", fetch):
+            await catalog.product_from_catalog(f"{SHOP}/products/x")
+        assert catalog._cache["geeksheaven.de"].ttl == catalog.NEGATIVE_TTL_SECONDS
+
+    async def test_server_errors_are_transient_too(self):
+        fetch = AsyncMock(return_value=catalog_page({}, status=503))
+        with patch("app.monitor.fetchers.fetch_httpx", fetch):
+            await catalog.product_from_catalog(f"{SHOP}/products/x")
+        assert catalog._cache["geeksheaven.de"].ttl == catalog.RETRY_TTL_SECONDS
+
+    async def test_404_is_a_settled_answer(self):
+        fetch = AsyncMock(return_value=catalog_page({}, status=404))
+        with patch("app.monitor.fetchers.fetch_httpx", fetch):
+            await catalog.product_from_catalog(f"{SHOP}/products/x")
+        assert catalog._cache["geeksheaven.de"].ttl == catalog.NEGATIVE_TTL_SECONDS
+
+    async def test_the_reason_is_readable(self):
+        with patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=catalog_page())):
+            await catalog.product_from_catalog(f"{SHOP}/products/pokemon-30-jahre-ttb")
+        assert catalog.reason(SHOP) == "2 Produkte"
+
+    async def test_recovery_after_the_retry_window(self, monkeypatch):
+        """Once the shop answers again, the catalogue must come back."""
+        fetch = AsyncMock(return_value=catalog_page({}, status=429))
+        with patch("app.monitor.fetchers.fetch_httpx", fetch):
+            assert await catalog.product_from_catalog(f"{SHOP}/products/x") is None
+
+        monkeypatch.setattr(catalog, "RETRY_TTL_SECONDS", 0)
+        entry = catalog._cache["geeksheaven.de"]
+        catalog._cache["geeksheaven.de"] = catalog._Entry(
+            at=entry.at, index=None, reason=entry.reason, ttl=0
+        )
+        with patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=catalog_page())):
+            product = await catalog.product_from_catalog(f"{SHOP}/products/pokemon-30-jahre-ttb")
+        assert product is not None
 
 
 @pytest.mark.asyncio

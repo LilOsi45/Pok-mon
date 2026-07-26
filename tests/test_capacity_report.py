@@ -77,13 +77,15 @@ def test_scanners_always_cost_their_own_request(monkeypatch):
 
 def test_render_lists_the_offender_and_stays_short():
     over = _domain("busy.example", 18, 120)
+    over.probe_error = "HTTP 429 — Shop drosselt uns"
     fine = _domain("calm.example", 1, 300, catalog={"p0": {"handle": "p0"}})
 
     text = render([over, fine])
 
     assert "busy.example" in text
     assert "ÜBERLASTET" in text
-    assert "18x eigener Abruf" in text
+    assert "18" in text
+    assert "HTTP 429" in text, "the reason the catalogue is missing must be visible"
     assert len(text.splitlines()) < 25, "must fit a phone screen"
 
 

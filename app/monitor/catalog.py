@@ -9,8 +9,10 @@ Fetching the catalogue once and serving every watch on that shop from it turns
 those 18 requests into 1, and every product gets checked as often as the
 catalogue is refreshed — faster *and* far gentler than the per-product path.
 
-Shops that are not Shopify (or hide the endpoint) are remembered as such so we
-don't probe them again on every check.
+Failures are cached too, and the distinction matters: a 404 means the shop is
+simply not Shopify and must not be probed again for an hour, while a 429 means
+we asked too fast and should retry soon. Treating the second like the first
+disables the catalogue for a whole hour on exactly the shops that need it most.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from app.config import get_settings
@@ -25,16 +28,35 @@ from app.config import get_settings
 log = logging.getLogger(__name__)
 
 CATALOG_PATH = "/products.json?limit=250"
-NEGATIVE_TTL_SECONDS = 3600  # don't re-probe a non-Shopify shop every check
+NEGATIVE_TTL_SECONDS = 3600  # settled: not a Shopify shop, stop probing
+RETRY_TTL_SECONDS = 120  # undecided: rate-limited or down, ask again soon
 
-# host -> (fetched_at, {handle: product} | None)   None = not a Shopify catalog
-_cache: dict[str, tuple[float, dict[str, dict] | None]] = {}
+
+@dataclass(frozen=True)
+class _Entry:
+    at: float
+    index: dict[str, dict] | None
+    reason: str
+    ttl: float
+
+    def fresh(self, now: float) -> bool:
+        return now - self.at < self.ttl
+
+
+_cache: dict[str, _Entry] = {}
 _locks: dict[str, asyncio.Lock] = {}
 
 
 def clear_cache() -> None:
     _cache.clear()
     _locks.clear()
+
+
+def reason(url_or_host: str) -> str | None:
+    """Why the last probe of this shop did (not) yield a catalogue."""
+    host = urlsplit(url_or_host).netloc or url_or_host
+    entry = _cache.get(host)
+    return None if entry is None else entry.reason
 
 
 def product_handle(url: str) -> str | None:
@@ -60,16 +82,26 @@ def _index(products: list) -> dict[str, dict]:
     }
 
 
-async def _load(base: str) -> dict[str, dict] | None:
+async def _load(base: str) -> tuple[dict[str, dict] | None, str, bool]:
+    """Returns (index, human reason, transient).
+
+    `transient` separates "ask again in two minutes" from "this shop has no
+    catalogue, leave it alone for an hour".
+    """
     from app.monitor import fetchers
 
     try:
         page = await fetchers.fetch_httpx(f"{base}{CATALOG_PATH}", respect_robots=False)
     except Exception as exc:
         log.info("catalog fetch failed for %s: %s", base, exc)
-        return None
+        return None, f"Abruf fehlgeschlagen ({type(exc).__name__})", True
+    if page.status_code == 429:
+        return None, "HTTP 429 — Shop drosselt uns", True
+    if page.status_code >= 500:
+        return None, f"HTTP {page.status_code} — Shop-Fehler", True
     if page.status_code != 200:
-        return None
+        return None, f"HTTP {page.status_code} — kein /products.json", False
+
     data = page.json_data
     if data is None and page.text:
         import json
@@ -77,12 +109,15 @@ async def _load(base: str) -> dict[str, dict] | None:
         try:
             data = json.loads(page.text)
         except ValueError:
-            return None
+            return None, "Antwort ist kein JSON — kein Shopify-Shop", False
     if not isinstance(data, dict) or not isinstance(data.get("products"), list):
-        return None
+        return None, "JSON ohne 'products' — kein Shopify-Shop", False
+
     index = _index(data["products"])
+    if not index:
+        return None, "Katalog ist leer", True
     log.info("catalog for %s: %d products", base, len(index))
-    return index or None
+    return index, f"{len(index)} Produkte", False
 
 
 async def catalog(url: str) -> dict[str, dict] | None:
@@ -92,24 +127,28 @@ async def catalog(url: str) -> dict[str, dict] | None:
         return None
     host = split.netloc
     base = f"{split.scheme}://{host}"
-    ttl = get_settings().catalog_ttl_seconds
     now = time.monotonic()
 
-    hit = _cache.get(host)
-    if hit is not None:
-        fetched_at, index = hit
-        age = now - fetched_at
-        if age < (ttl if index is not None else NEGATIVE_TTL_SECONDS):
-            return index
+    entry = _cache.get(host)
+    if entry is not None and entry.fresh(now):
+        return entry.index
 
     lock = _locks.setdefault(host, asyncio.Lock())
     async with lock:
-        # another waiter may have refreshed it while we queued
-        hit = _cache.get(host)
-        if hit is not None and time.monotonic() - hit[0] < ttl and hit[1] is not None:
-            return hit[1]
-        index = await _load(base)
-        _cache[host] = (time.monotonic(), index)
+        # Another waiter may have refreshed it while we queued. This must accept
+        # a cached *failure* as well: with 18 watches on one shop, re-probing on
+        # every miss meant 18 back-to-back catalogue requests, which is what
+        # provoked the 429 that made them fail in the first place.
+        entry = _cache.get(host)
+        if entry is not None and entry.fresh(time.monotonic()):
+            return entry.index
+
+        index, why, transient = await _load(base)
+        if index is not None:
+            ttl = get_settings().catalog_ttl_seconds
+        else:
+            ttl = RETRY_TTL_SECONDS if transient else NEGATIVE_TTL_SECONDS
+        _cache[host] = _Entry(at=time.monotonic(), index=index, reason=why, ttl=ttl)
         return index
 
 

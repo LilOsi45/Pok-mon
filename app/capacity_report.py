@@ -82,13 +82,15 @@ class Domain:
 
 
 async def _probe(domain: Domain) -> None:
-    from app.monitor.catalog import catalog
+    from app.monitor.catalog import catalog, reason
 
     if not any(candidate for _u, _i, candidate in domain.items):
+        domain.probe_error = "nur Scanner/Sammelseiten"
         return
     url = next(u for u, _i, c in domain.items if c)
     try:
         domain.catalog = await catalog(url)
+        domain.probe_error = reason(url)
     except Exception as exc:  # a diagnostic must never crash on one bad shop
         domain.probe_error = str(exc)[:60]
 
@@ -145,18 +147,23 @@ def render(domains: list[Domain]) -> str:
             f"{d.demand_per_min:6.1f} {d.supply_per_min:6.1f}  {d.verdict}"
         )
 
+    # A shop inside its budget but without a catalogue is still the expensive
+    # case: every product costs its own request, and that is what triggers 429.
+    costly = sorted(
+        (d for d in domains if len(d.own_request) > 2),
+        key=lambda d: -len(d.own_request),
+    )
+    if costly:
+        out.append("")
+        out.append("Viele Einzelabrufe statt einem Katalog-Abruf:")
+        for d in costly:
+            out.append(f"  {d.host[:24]:24} {len(d.own_request):3d}x  {d.probe_error or '—'}")
+
     if problems:
         out.append("")
-        out.append("Zu viele Einzelabrufe (die bremsen sich gegenseitig aus):")
-        for d in problems:
-            own = len(d.own_request)
-            hint = "kein /products.json" if not d.catalog else "nicht im Katalog"
-            out.append(f"  {d.host[:24]:24} {own:3d}x eigener Abruf  ({hint})")
-        out.append("")
         out.append(
-            "Fix-Reihenfolge: 1) Produkte per Katalog abdecken statt einzeln,\n"
-            "2) Intervall dieser Watches an 'Kann' anpassen — ein Intervall, das\n"
-            "der Shop nicht schafft, prüft seltener als ein längeres, das passt."
+            "ÜBERLASTET heißt: Der Shop schafft die Intervalle nicht. Ein Intervall,\n"
+            "das er nicht schafft, prüft seltener als ein längeres, das passt."
         )
     return "\n".join(out)
 
