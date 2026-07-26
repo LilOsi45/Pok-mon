@@ -93,10 +93,22 @@ def render(loads: list[ShopLoad]) -> str:
 
 
 async def report() -> str:
+    from app.config import get_settings
+    from app.retention import row_counts
+
     async with get_sessionmaker()() as session:
         watches = list((await session.scalars(select(Watch).where(Watch.enabled))).all())
         scans = list((await session.scalars(select(ProductScan).where(ProductScan.enabled))).all())
-    return render(collect(watches, scans))
+        counts = await row_counts(session)
+
+    settings = get_settings()
+    history = (
+        f"\nVerlauf in der Datenbank: {counts['stock_checks']:,} Checks, "
+        f"{counts['notifications']:,} Benachrichtigungen\n"
+        f"Wird nachts aufgeräumt: Checks älter als {settings.check_retention_days} Tage, "
+        f"Benachrichtigungen älter als {settings.notification_retention_days} Tage."
+    ).replace(",", ".")
+    return render(collect(watches, scans)) + "\n" + history
 
 
 def main() -> None:

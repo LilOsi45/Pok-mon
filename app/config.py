@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     # of one request per product. Shorter TTL = fresher stock, more requests.
     catalog_ttl_seconds: float = 45.0
     use_shop_catalog: bool = True
+
+    # History retention. Without this the check log grows by ~29k rows/day at
+    # 40 watches on 2-minute intervals (~2 GB/year). Scanner memory
+    # (scan_items) is never pruned — it is what prevents duplicate alerts.
+    check_retention_days: int = 14
+    notification_retention_days: int = 90
     respect_robots_txt: bool = True
 
     # --- notifications: append search links to other big shops on restock alerts ---

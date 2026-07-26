@@ -195,6 +195,18 @@ def schedule_news_jobs() -> None:
             name="daily heartbeat",
         )
 
+    # Trim the check/notification history nightly — it grows by tens of
+    # thousands of rows a day and nothing else ever deletes from it.
+    from app.retention import prune_job
+
+    scheduler.add_job(
+        prune_job,
+        CronTrigger(hour=4, minute=30),
+        id="system:retention",
+        replace_existing=True,
+        name="prune old history",
+    )
+
 
 async def start_scheduler() -> None:
     scheduler = get_scheduler()
