@@ -79,9 +79,12 @@ class Settings(BaseSettings):
     db_pool_size: int = 20
     db_max_overflow: int = 30
     db_pool_timeout_seconds: float = 30.0
-    # Ceiling on watches/scans running at once, so a burst of slow unlocker
-    # fetches can never starve the pool again.
-    scheduler_max_workers: int = 12
+    # Ceiling on watches/scans running at once. Checks release their DB
+    # connection before fetching, so this is only a guard against unbounded
+    # memory/sockets — not a pool protection. Keep it comfortably above the
+    # number of due checks per interval, or slow fetches build a backlog and
+    # APScheduler drops the late runs (watches then look "stale").
+    scheduler_max_workers: int = 40
     # Shopify shops are checked from one cached /products.json per shop instead
     # of one request per product. Shorter TTL = fresher stock, more requests.
     catalog_ttl_seconds: float = 45.0

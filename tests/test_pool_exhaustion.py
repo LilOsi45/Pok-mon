@@ -196,3 +196,18 @@ def test_engine_pool_has_headroom(monkeypatch):
     # SQLite in-memory/file pools expose the configured size
     assert engine.pool.size() == settings.db_pool_size
     db.reset_engine_for_tests()
+
+
+def test_concurrency_default_does_not_throttle_the_schedule():
+    """Regression: a cap of 12 starved the schedule.
+
+    With ~40 watches on 120 s intervals, 40 checks are due every two minutes. At
+    12 slots and fetches that take tens of seconds (retries on a failing shop),
+    only about half of them get to run — APScheduler then drops the late ones
+    and every watch reports as stale. The cap guards memory/sockets, not the DB
+    pool (connections are released before fetching), so it must stay generous.
+    """
+    import app.config as config
+
+    config.get_settings.cache_clear()
+    assert config.get_settings().scheduler_max_workers >= 40
