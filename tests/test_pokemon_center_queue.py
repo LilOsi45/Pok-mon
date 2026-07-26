@@ -168,3 +168,43 @@ class TestWatchDebugSignals:
         from app.watch_debug import _queue_signals
 
         assert _queue_signals(page(status=403, text="cmsg challenge")) == []
+
+
+@pytest.mark.asyncio
+class TestFetcherChoice:
+    """Measured: only the unlocker reaches the site, so it must be selectable."""
+
+    async def _fetch_with(self, detection: dict):
+        from app.monitor import fetchers
+
+        adapter = PokemonCenterQueueAdapter(detection)
+        calls: list[str] = []
+
+        async def record(name):
+            async def _inner(url, **_kw):
+                calls.append(name)
+                return page()
+
+            return _inner
+
+        with (
+            patch.object(fetchers, "fetch_scraperapi", await record("brightdata")),
+            patch.object(fetchers, "fetch_playwright", await record("playwright")),
+        ):
+            await adapter.fetch(URL)
+        return calls
+
+    async def test_brightdata_is_selectable(self):
+        assert await self._fetch_with({"fetcher": "brightdata"}) == ["brightdata"]
+
+    async def test_playwright_still_selectable(self):
+        assert await self._fetch_with({"fetcher": "playwright"}) == ["playwright"]
+
+
+def test_unlocker_sees_the_waiting_room_through_the_body():
+    """Via the unlocker there is no redirect to inspect — the body must carry it."""
+    result = PokemonCenterQueueAdapter({"fetcher": "brightdata"}).parse(
+        page(status=200, text="<html><body>You are now in line. Estimated wait 12 min</body></html>")
+    )
+    assert result.status == StockStatus.IN_STOCK
+    assert result.alert_title and "OFFEN" in result.alert_title

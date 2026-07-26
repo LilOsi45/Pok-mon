@@ -23,8 +23,16 @@ Detection signals, strongest first:
 4. early warning: the edge stops answering the way it does at rest (200/403)
    and returns 429 or any 5xx — the wall going up as a drop spins up
 
-If checks are permanently UNKNOWN, the bot wall is blocking the server's IP:
-set PROXY_URL in .env or detection config {"fetcher": "playwright"}.
+Choosing a fetcher (detection config)
+-------------------------------------
+Measured against pokemoncenter.com, not guessed:
+
+    (default)                  plain httpx  -> permanent HTTP 403 challenge
+    {"fetcher": "playwright"}  real browser -> permanent HTTP 403 challenge
+    {"fetcher": "brightdata"}  unlocker     -> HTTP 200, full page
+
+Only the unlocker reaches the site, so it is the only setting that can observe
+a queue at all. It costs money per request, so keep the interval sane.
 """
 
 from __future__ import annotations
@@ -71,12 +79,21 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
     async def fetch(self, url: str) -> PageResult:
         from app.monitor import fetchers
 
-        if self.detection_config.get("fetcher") == "playwright":
+        fetcher = self.detection_config.get("fetcher")
+        if fetcher == "playwright":
             return await fetchers.fetch_playwright(url)
-        # NOTE: never route this through the scraping API/unlocker — that is
-        # designed to get *past* the anti-bot/queue, which hides the very signal
-        # we want. We fetch directly (via PROXY_URL) and DON'T follow redirects,
-        # so the Queue-it redirect / waiting-room page is what we detect.
+        if fetcher == "brightdata":
+            # The unlocker is the only client that actually reaches this site:
+            # plain httpx and a real headless browser both get the permanent
+            # 403 challenge wall. It gets past the *bot check* — but Queue-it is
+            # a server-side waiting room, not a bot check, so a live queue is
+            # served to the unlocker too. We therefore match on the body
+            # phrases; the redirect itself is invisible here because the
+            # unlocker follows redirects and reports only the requested URL.
+            return await fetchers.fetch_scraperapi(url)
+        # Direct fetch (via PROXY_URL), NOT following redirects, so a Queue-it
+        # redirect is visible as a 3xx + Location. Only useful while the site
+        # answers us at all — see the module docstring.
         settings = get_settings()
         await asyncio.sleep(random.uniform(0.2, 1.5))
         start = time.monotonic()
