@@ -18,6 +18,33 @@ class GenericAdapter(RetailerAdapter):
     name = "Generic shop"
     domains = ()
 
+    async def check(self, url: str) -> tuple[PageResult, StockResult]:
+        """Serve Shopify products from the shop's shared catalogue when possible.
+
+        Auto-detected per shop, so any Shopify store benefits without being
+        listed anywhere: 18 watches on one shop become 1 request instead of 18,
+        and the reading is the authoritative `available` flag rather than HTML
+        guesswork. Non-Shopify shops fall through to the normal HTML path.
+        """
+        from app.config import get_settings
+
+        if get_settings().use_shop_catalog and "/products/" in url:
+            from app.monitor.adapters.shopify import ShopifyAdapter
+            from app.monitor.catalog import product_from_catalog
+
+            product = await product_from_catalog(url)
+            if product is not None:
+                page = PageResult(
+                    url=url,
+                    final_url=url,
+                    status_code=200,
+                    text="",
+                    json_data=product,
+                    fetched_via="shop-catalog",
+                )
+                return page, ShopifyAdapter(self.detection_config).parse(page)
+        return await super().check(url)
+
     def parse(self, page: PageResult) -> StockResult:
         title = None
         tree = HTMLParser(page.text)

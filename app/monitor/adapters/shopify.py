@@ -67,8 +67,24 @@ class ShopifyAdapter(RetailerAdapter):
     domains = ("cardsrfun.de", "crispycards.de", "cardcosmos.de")
 
     async def fetch(self, url: str) -> PageResult:
+        from app.config import get_settings
         from app.monitor import fetchers
+        from app.monitor.catalog import product_from_catalog
 
+        # One cached /products.json per shop covers every watch on it; only fall
+        # back to a per-product request when the handle isn't in the catalogue
+        # (e.g. a store with more than 250 products).
+        if get_settings().use_shop_catalog:
+            product = await product_from_catalog(url)
+            if product is not None:
+                return PageResult(
+                    url=url,
+                    final_url=url,
+                    status_code=200,
+                    text="",
+                    json_data=product,
+                    fetched_via="shop-catalog",
+                )
         page = await fetchers.fetch_httpx(product_js_url(url), respect_robots=False)
         page.url = url  # keep the human URL as the buy link
         return page

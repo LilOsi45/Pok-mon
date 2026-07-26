@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # Ceiling on watches/scans running at once, so a burst of slow unlocker
     # fetches can never starve the pool again.
     scheduler_max_workers: int = 12
+    # Shopify shops are checked from one cached /products.json per shop instead
+    # of one request per product. Shorter TTL = fresher stock, more requests.
+    catalog_ttl_seconds: float = 45.0
+    use_shop_catalog: bool = True
     respect_robots_txt: bool = True
 
     # --- notifications: append search links to other big shops on restock alerts ---
