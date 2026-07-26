@@ -92,9 +92,13 @@ async def _load(base: str) -> tuple[dict[str, dict] | None, str, bool]:
 
     try:
         page = await fetchers.fetch_httpx(f"{base}{CATALOG_PATH}", respect_robots=False)
+    except fetchers.RateLimited as exc:
+        return None, str(exc), True
     except Exception as exc:
         log.info("catalog fetch failed for %s: %s", base, exc)
         return None, f"Abruf fehlgeschlagen ({type(exc).__name__})", True
+    # fetch_httpx raises RateLimited on these, but a fetcher that returns the
+    # response instead must not be read as "this shop has no catalogue".
     if page.status_code == 429:
         return None, "HTTP 429 — Shop drosselt uns", True
     if page.status_code >= 500:

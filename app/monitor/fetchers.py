@@ -28,15 +28,63 @@ class RobotsDisallowed(FetchError):
     pass
 
 
+class RateLimited(FetchError):
+    """The shop told us to back off. Nothing is sent until the wait is over."""
+
+
 _client: httpx.AsyncClient | None = None
 _domain_semaphores: dict[str, asyncio.Semaphore] = {}
 _domain_last_request: dict[str, float] = {}  # domain -> monotonic time of last GET
+_domain_blocked_until: dict[str, float] = {}  # domain -> monotonic time we may resume
+_domain_penalty: dict[str, int] = {}  # domain -> consecutive refusals
 _robots_cache: dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]] = {}
 _ROBOTS_TTL = 24 * 3600
 
 # A check must finish well inside its own poll interval, otherwise the next run
 # collides with it and gets dropped. Never wait longer than this inside one fetch.
 MAX_BACKOFF_SECONDS = 8.0
+# How long we stand down from a shop that refuses us. Doubles with every
+# consecutive refusal, so the rate settles at whatever the shop tolerates.
+DEFAULT_COOLDOWN_SECONDS = 60.0
+MAX_COOLDOWN_SECONDS = 900.0
+
+
+def cooldown_remaining(domain: str) -> float:
+    """Seconds until this shop may be contacted again."""
+    until = _domain_blocked_until.get(domain)
+    return 0.0 if until is None else max(0.0, until - time.monotonic())
+
+
+def note_refusal(domain: str, retry_after: float | None) -> float:
+    """Record a 429/503 and stand down — longer each time it repeats.
+
+    Measured against Cloudflare on a live shop: answering a "Retry-After: 60"
+    by retrying after 8 seconds, three times per check, kept the rate limit
+    permanently topped up. The ban never expired because we never stopped
+    knocking. Waiting the shop out is the only thing that clears it.
+    """
+    penalty = _domain_penalty.get(domain, 0)
+    base = retry_after if retry_after and retry_after > 0 else DEFAULT_COOLDOWN_SECONDS
+    wait = min(base * (2**penalty), MAX_COOLDOWN_SECONDS)
+    _domain_penalty[domain] = min(penalty + 1, 8)
+    _domain_blocked_until[domain] = time.monotonic() + wait
+    return wait
+
+
+def note_success(domain: str) -> None:
+    _domain_penalty.pop(domain, None)
+    _domain_blocked_until.pop(domain, None)
+
+
+def reset_cooldowns() -> None:
+    _domain_blocked_until.clear()
+    _domain_penalty.clear()
+
+
+def _refuse_if_cooling(domain: str) -> None:
+    remaining = cooldown_remaining(domain)
+    if remaining > 0:
+        raise RateLimited(f"{domain} drosselt uns — Pause noch {remaining:.0f}s")
 
 BASE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
@@ -67,8 +115,18 @@ async def domain_gate(domain: str) -> AsyncIterator[None]:
 
     The timestamp is taken when the request *finishes*, so a slow page load or a
     retry chain doesn't get its politeness gap for free.
+
+    A shop under cooldown is refused here, before the semaphore, so 18 waiting
+    checks fail instantly instead of queueing up behind a shop that isn't
+    answering anyway.
     """
+    _refuse_if_cooling(domain)
     async with _semaphore(domain):
+        # Check again: 18 watches on one shop all pass the first check together,
+        # then queue here. Without this the first one gets the 429 and the other
+        # 17 still go out and each collect their own — exactly the knocking that
+        # keeps the ban alive.
+        _refuse_if_cooling(domain)
         min_gap = get_settings().per_domain_min_interval_seconds
         last = _domain_last_request.get(domain)
         if last is not None:
@@ -101,6 +159,17 @@ async def close_client() -> None:
     if _client is not None and not _client.is_closed:
         await _client.aclose()
     _client = None
+
+
+def _retry_after(resp: httpx.Response) -> float | None:
+    """Seconds from a Retry-After header, ignoring the HTTP-date form."""
+    raw = resp.headers.get("Retry-After")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
 
 
 def _semaphore(domain: str) -> asyncio.Semaphore:
@@ -152,20 +221,24 @@ async def fetch_httpx(
             except httpx.HTTPError as exc:
                 last_exc = exc
                 log.warning("fetch attempt %d failed for %s: %s", attempt + 1, url, exc)
-                await asyncio.sleep((2**attempt) + random.uniform(0, 1))
+                await asyncio.sleep(min(2**attempt, MAX_BACKOFF_SECONDS) + random.uniform(0, 1))
                 continue
             elapsed_ms = int((time.monotonic() - start) * 1000)
-            if resp.status_code in (429, 503) and attempt < retries - 1:
-                # Cap the in-check wait hard. Honouring a 60 s Retry-After here
-                # made a single check take minutes; the next scheduled run then
-                # collided with it and APScheduler dropped it ("maximum number
-                # of running instances reached"), so the watch went stale. The
-                # scheduler retries soon anyway — fail fast and free the slot.
-                wait = float(resp.headers.get("Retry-After", 2**attempt * 2))
-                wait = min(wait, MAX_BACKOFF_SECONDS)
-                log.warning("HTTP %d from %s, backing off %.1fs", resp.status_code, domain, wait)
-                await asyncio.sleep(wait + random.uniform(0, 1))
-                continue
+            if resp.status_code in (429, 503):
+                # Do not retry. Retrying a refusal inside the same check is what
+                # kept the Cloudflare rate limit permanently topped up: the shop
+                # asked for 60 s and got knocked on again after 8, three times
+                # per check, from 18 watches. Stand down for the whole domain
+                # and let the scheduler come back once the shop has cooled off.
+                wait = note_refusal(domain, _retry_after(resp))
+                log.warning(
+                    "HTTP %d from %s — Pause %.0fs für den ganzen Shop",
+                    resp.status_code,
+                    domain,
+                    wait,
+                )
+                raise RateLimited(f"{domain} antwortet {resp.status_code} — Pause {wait:.0f}s")
+            note_success(domain)
             json_data = None
             content_type = resp.headers.get("content-type", "")
             if "json" in content_type:

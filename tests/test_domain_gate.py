@@ -37,9 +37,11 @@ def _clean_throttle_state(monkeypatch):
     import app.config as config
 
     config.get_settings.cache_clear()
+    fetchers.reset_cooldowns()
     fetchers._domain_last_request.clear()
     fetchers._domain_semaphores.clear()
     yield
+    fetchers.reset_cooldowns()
     fetchers._domain_last_request.clear()
     fetchers._domain_semaphores.clear()
     config.get_settings.cache_clear()
