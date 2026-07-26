@@ -32,6 +32,10 @@ _domain_last_request: dict[str, float] = {}  # domain -> monotonic time of last 
 _robots_cache: dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]] = {}
 _ROBOTS_TTL = 24 * 3600
 
+# A check must finish well inside its own poll interval, otherwise the next run
+# collides with it and gets dropped. Never wait longer than this inside one fetch.
+MAX_BACKOFF_SECONDS = 8.0
+
 BASE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
     "Accept-Language": "de-DE,de;q=0.9,en;q=0.7",
@@ -127,9 +131,15 @@ async def fetch_httpx(
                 continue
             elapsed_ms = int((time.monotonic() - start) * 1000)
             if resp.status_code in (429, 503) and attempt < retries - 1:
+                # Cap the in-check wait hard. Honouring a 60 s Retry-After here
+                # made a single check take minutes; the next scheduled run then
+                # collided with it and APScheduler dropped it ("maximum number
+                # of running instances reached"), so the watch went stale. The
+                # scheduler retries soon anyway — fail fast and free the slot.
                 wait = float(resp.headers.get("Retry-After", 2**attempt * 2))
+                wait = min(wait, MAX_BACKOFF_SECONDS)
                 log.warning("HTTP %d from %s, backing off %.1fs", resp.status_code, domain, wait)
-                await asyncio.sleep(min(wait, 60) + random.uniform(0, 1))
+                await asyncio.sleep(wait + random.uniform(0, 1))
                 continue
             json_data = None
             content_type = resp.headers.get("content-type", "")
