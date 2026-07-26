@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     # Minimum seconds between two requests to the SAME domain — spreads many
     # watches on one shop over time so small shops don't rate-limit (429) you.
     per_domain_min_interval_seconds: float = 20.0
+
+    # DB connection pool. Watches release their connection before fetching, but
+    # many short intervals still need more headroom than SQLAlchemy's 5 + 10.
+    db_pool_size: int = 20
+    db_max_overflow: int = 30
+    db_pool_timeout_seconds: float = 30.0
+    # Ceiling on watches/scans running at once, so a burst of slow unlocker
+    # fetches can never starve the pool again.
+    scheduler_max_workers: int = 12
     respect_robots_txt: bool = True
 
     # --- notifications: append search links to other big shops on restock alerts ---

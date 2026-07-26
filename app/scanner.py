@@ -230,6 +230,10 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
     from app.monitor import fetchers
     from app.monitor.registry import resolve_adapter
 
+    # Release the pooled DB connection before fetching — a listing page through
+    # the unlocker can take 30 s+, and holding a connection that long starves
+    # the pool (see check_watch for the same fix).
+    await session.commit()
     try:
         # Bot-protected chains (MediaMarkt/Saturn/Smyths…) resolve to a
         # scraperapi adapter — route the scan through the same unlocker.
@@ -325,11 +329,13 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
 
 
 async def run_scan_by_id(scan_id: int) -> None:
-    """Scheduler entry point — own session per job run."""
+    """Scheduler entry point — own session per job run, bounded concurrency."""
     from app.db import get_sessionmaker
+    from app.limits import job_slots
 
-    async with get_sessionmaker()() as session:
-        scan = await session.get(ProductScan, scan_id)
-        if scan is None or not scan.enabled:
-            return
-        await run_scan(session, scan)
+    async with job_slots():
+        async with get_sessionmaker()() as session:
+            scan = await session.get(ProductScan, scan_id)
+            if scan is None or not scan.enabled:
+                return
+            await run_scan(session, scan)

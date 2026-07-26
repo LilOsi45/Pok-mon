@@ -175,6 +175,13 @@ async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
     adapter = resolve_adapter(watch.url, watch.adapter, dict(watch.detection or {}))
     check = StockCheck(watch_id=watch.id, status=StockStatus.UNKNOWN)
     event: Event | None = None
+    # Hand the pooled DB connection back BEFORE the network call. Loading the
+    # watch opened a transaction, and a fetch can take 30 s+ (unlocker); a
+    # handful of slow watches would otherwise hold every connection in the pool
+    # and the dashboard could no longer get one at all (HTTP 500).
+    # Safe here: nothing is pending yet, and expire_on_commit=False keeps the
+    # already-loaded watch attributes usable.
+    await session.commit()
     try:
         page, result = await adapter.check(watch.url)
         check.status = result.status
@@ -232,11 +239,13 @@ async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
 
 
 async def check_watch_by_id(watch_id: int) -> None:
-    """Scheduler entry point — own session per job run."""
+    """Scheduler entry point — own session per job run, bounded concurrency."""
     from app.db import get_sessionmaker
+    from app.limits import job_slots
 
-    async with get_sessionmaker()() as session:
-        watch = await session.get(Watch, watch_id)
-        if watch is None or not watch.enabled:
-            return
-        await check_watch(session, watch)
+    async with job_slots():
+        async with get_sessionmaker()() as session:
+            watch = await session.get(Watch, watch_id)
+            if watch is None or not watch.enabled:
+                return
+            await check_watch(session, watch)
