@@ -215,6 +215,18 @@ async def _fetch_brightdata(
         raise FetchError(
             f"brightdata auth error (HTTP {resp.status_code}) — check API token / BRIGHTDATA_ZONE"
         )
+    if not resp.text.strip():
+        # The 200 above is the *API's* status, not the target's. An empty body
+        # means the unlocker never got the page — reporting that as a
+        # successful fetch turns it into a silent "0 products found" further
+        # up, which sends the debugging in completely the wrong direction.
+        detail = ", ".join(
+            f"{k}={v}" for k, v in resp.headers.items() if k.lower().startswith(("x-", "brd"))
+        )
+        raise FetchError(
+            f"brightdata returned an empty body for {url}"
+            + (f" ({detail})" if detail else " (no diagnostic headers)")
+        )
     return PageResult(
         url=url,
         final_url=url,

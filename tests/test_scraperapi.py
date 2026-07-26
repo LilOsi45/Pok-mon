@@ -117,3 +117,70 @@ class TestBrightData:
         assert cap["headers"]["Authorization"] == "Bearer tok"
         assert page.fetched_via == "scraperapi:brightdata"
         config.get_settings.cache_clear()
+
+
+class TestBrightDataEmptyBody:
+    """An empty unlocker response must fail loudly, not look like a fetched page.
+
+    Bright Data answers HTTP 200 for a successful *API call* — that code says
+    nothing about the target. Passing an empty body through as a 200 page turned
+    a failed fetch into a silent "0 products found" much further up the chain.
+    """
+
+    def test_empty_body_raises_with_diagnostics(self, monkeypatch):
+        import httpx
+        import pytest
+
+        settings = _reload_settings(
+            monkeypatch,
+            SCRAPER_API_KEY="token",
+            SCRAPER_API_PROVIDER="brightdata",
+            BRIGHTDATA_ZONE="web_unlocker1",
+        )
+        response = httpx.Response(
+            200, text="   ", headers={"x-brd-error": "target_unreachable"}
+        )
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *_args, **_kwargs):
+                return response
+
+        monkeypatch.setattr(fetchers.httpx, "AsyncClient", lambda **kw: FakeClient())
+        with pytest.raises(fetchers.FetchError) as excinfo:
+            asyncio.run(fetchers._fetch_brightdata("https://shop.de/x", settings, 0.0, None))
+        message = str(excinfo.value)
+        assert "empty body" in message
+        assert "x-brd-error=target_unreachable" in message
+        config.get_settings.cache_clear()
+
+    def test_real_body_still_comes_through(self, monkeypatch):
+        import httpx
+
+        settings = _reload_settings(
+            monkeypatch,
+            SCRAPER_API_KEY="token",
+            SCRAPER_API_PROVIDER="brightdata",
+            BRIGHTDATA_ZONE="web_unlocker1",
+        )
+        response = httpx.Response(200, text="<html>Produkt</html>")
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *_args, **_kwargs):
+                return response
+
+        monkeypatch.setattr(fetchers.httpx, "AsyncClient", lambda **kw: FakeClient())
+        page = asyncio.run(fetchers._fetch_brightdata("https://shop.de/x", settings, 0.0, None))
+        assert page.status_code == 200 and "Produkt" in page.text
+        config.get_settings.cache_clear()

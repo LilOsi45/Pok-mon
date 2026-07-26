@@ -85,6 +85,15 @@ async def debug_scan(scan_id: int) -> None:
         print("\n=> Der Scanner bricht hier ab: alles außer HTTP 200 gilt als Fehler.")
         return
 
+    if not page.text.strip():
+        print(
+            "\n=> Die Antwort war LEER (0 Zeichen). Das ist KEIN Parser-Problem — der\n"
+            "   Abruf selbst hat nichts geliefert. Bei Bright Data ist der HTTP-Code\n"
+            "   oben der Status der API, nicht der Zielseite: ein leerer Körper heißt,\n"
+            "   der Unlocker kam nicht an die Seite."
+        )
+        return
+
     found = parse_listing(page.text, page.final_url)
     print(f"Produkte erkannt: {len(found)}")
     if not found:
