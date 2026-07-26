@@ -8,6 +8,8 @@ import logging
 import random
 import time
 import urllib.robotparser
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
 import httpx
@@ -44,7 +46,40 @@ BASE_HEADERS = {
 
 
 def _domain(url: str) -> str:
-    return urlsplit(url).netloc.lower()
+    """The throttling key for a URL.
+
+    www.shop.de and shop.de are one shop and share one rate limit, so they must
+    share one budget here too — keeping them apart silently doubled our request
+    rate on any shop whose watches used both spellings.
+    """
+    return urlsplit(url).netloc.lower().removeprefix("www.")
+
+
+@asynccontextmanager
+async def domain_gate(domain: str) -> AsyncIterator[None]:
+    """Serialise requests to one shop and keep a minimum gap between them.
+
+    Every path that touches a shop must go through here. The browser fetcher
+    used to skip it, and because one page load pulls in scripts, styles and
+    XHRs, a single scan burst past the whole per-minute budget — which is what
+    made shops answer 429 to everything else while a plain curl from the same
+    machine still got a 200.
+
+    The timestamp is taken when the request *finishes*, so a slow page load or a
+    retry chain doesn't get its politeness gap for free.
+    """
+    async with _semaphore(domain):
+        min_gap = get_settings().per_domain_min_interval_seconds
+        last = _domain_last_request.get(domain)
+        if last is not None:
+            wait = min_gap - (time.monotonic() - last)
+            if wait > 0:
+                await asyncio.sleep(wait)
+        await asyncio.sleep(random.uniform(0.2, 1.5))  # jitter, don't look like a bot burst
+        try:
+            yield
+        finally:
+            _domain_last_request[domain] = time.monotonic()
 
 
 def get_client() -> httpx.AsyncClient:
@@ -109,17 +144,7 @@ async def fetch_httpx(
         raise RobotsDisallowed(f"robots.txt disallows fetching {url}")
     domain = _domain(url)
     last_exc: Exception | None = None
-    async with _semaphore(domain):
-        # Per-domain throttle: keep a minimum gap between requests to the same
-        # shop so many watches on one domain don't burst into a 429.
-        min_gap = get_settings().per_domain_min_interval_seconds
-        last = _domain_last_request.get(domain)
-        if last is not None:
-            wait = min_gap - (time.monotonic() - last)
-            if wait > 0:
-                await asyncio.sleep(wait)
-        await asyncio.sleep(random.uniform(0.2, 1.5))  # jitter, don't look like a bot burst
-        _domain_last_request[domain] = time.monotonic()
+    async with domain_gate(domain):
         for attempt in range(retries):
             start = time.monotonic()
             try:
@@ -335,8 +360,7 @@ async def fetch_playwright(
 ) -> PageResult:
     domain = _domain(url)
     settings = get_settings()
-    async with _semaphore(domain):
-        await asyncio.sleep(random.uniform(0.2, 1.5))
+    async with domain_gate(domain):
         browser = await _get_browser()
         context = await browser.new_context(
             user_agent=settings.user_agent,
@@ -347,12 +371,15 @@ async def fetch_playwright(
         start = time.monotonic()
         try:
             page = await context.new_page()
-            # keep it light: skip images/fonts/media
+            # Keep the burst small: every sub-request counts against the shop's
+            # rate limit, and we only ever read text. Scripts stay — they are
+            # what renders the product grid we came for.
             await page.route(
                 "**/*",
                 lambda route: (
                     route.abort()
-                    if route.request.resource_type in ("image", "media", "font")
+                    if route.request.resource_type
+                    in ("image", "media", "font", "stylesheet")
                     else route.continue_()
                 ),
             )
