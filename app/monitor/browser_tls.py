@@ -21,6 +21,7 @@ is unchanged; only the wire-level identity differs.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from app.config import get_settings
@@ -91,7 +92,9 @@ async def fetch(
 ) -> PageResult:
     """One GET with a browser handshake. Raises on transport errors."""
     session = _get_session(proxy)
+    started = time.monotonic()
     resp = await session.get(url, headers=extra_headers or None, allow_redirects=True)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
 
     json_data = None
     if "json" in (resp.headers.get("content-type") or ""):
@@ -107,6 +110,9 @@ async def fetch(
         text=resp.text,
         json_data=json_data,
         headers=dict(resp.headers),
-        elapsed_ms=int(getattr(resp, "elapsed", 0) * 1000),
+        # Timed here rather than read off the response: curl_cffi reports the
+        # duration as a timedelta, and int() on that raised on every single
+        # fetch — 41 of 43 watches failed with a TypeError that named no shop.
+        elapsed_ms=elapsed_ms,
         fetched_via="browser-tls",
     )

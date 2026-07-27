@@ -34,18 +34,24 @@ def _clean(monkeypatch):
     config.get_settings.cache_clear()
 
 
-class _Resp:
-    def __init__(self, status=200, text="hi", headers=None, url="https://shop.de/x"):
-        self.status_code = status
-        self.text = text
-        self.headers = headers or {}
-        self.url = url
-        self.elapsed = 0.25
+def _Resp(status=200, text="hi", headers=None, url="https://shop.de/x"):
+    """A real curl_cffi Response, not a hand-rolled stand-in.
 
-    def json(self):
-        import json
+    The stand-in gave `elapsed` as a float. The library returns a timedelta,
+    int() on it raised, and every fetch failed with a TypeError naming no shop
+    at all — a fake that is easier to satisfy than the real thing hides exactly
+    this kind of break.
+    """
+    from curl_cffi.requests import Response
+    from curl_cffi.requests.headers import Headers
 
-        return json.loads(self.text)
+    resp = Response()
+    resp.status_code = status
+    resp.url = url
+    resp.headers = Headers(headers or {})
+    resp.content = text.encode()
+    resp.encoding = "utf-8"
+    return resp
 
 
 class TestItIsInstalled:
