@@ -51,6 +51,36 @@ async def _try(label: str, url: str, *, headers: dict, proxy: str | None) -> Non
         print(f"{label:34} FEHLER  {type(exc).__name__}: {str(exc)[:50]}")
 
 
+async def _try_curl(url: str) -> None:
+    """The control. curl and httpx differ in one thing we cannot change by
+    configuration: the TLS handshake Cloudflare fingerprints. If curl gets a 200
+    in the same minute httpx gets a 429, the block is on the client we use — and
+    a proxy would not help, because the fingerprint travels with us."""
+    import asyncio.subprocess as sp
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "curl",
+            "-s",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code} %{size_download}",
+            "-A",
+            CHROME_UA,
+            "--max-time",
+            "30",
+            url,
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+        )
+        out, _err = await proc.communicate()
+        status, _, size = out.decode().strip().partition(" ")
+        print(f"{'curl (anderes Programm)':34} {status}  {size:>8} B")
+    except FileNotFoundError:
+        print(f"{'curl (anderes Programm)':34} nicht installiert")
+
+
 async def probe(url: str) -> None:
     settings = get_settings()
     proxy = settings.proxy_url
@@ -66,12 +96,21 @@ async def probe(url: str) -> None:
         ("wie die App (mit Proxy)", app_headers, proxy),
         ("wie die App, ohne Proxy", app_headers, None),
         ("ohne Cache-Control", without_no_cache, None),
-        ("nur User-Agent (wie curl)", {"User-Agent": CHROME_UA}, None),
+        ("gleiche Header wie curl", {"User-Agent": CHROME_UA}, None),
     ]
     for index, (label, headers, via) in enumerate(variants):
         if index:
             await asyncio.sleep(GAP_SECONDS)
         await _try(label, url, headers=headers, proxy=via)
+
+    # Same URL, same machine, same seconds — only the program differs.
+    await asyncio.sleep(GAP_SECONDS)
+    await _try_curl(url)
+    print()
+    print(
+        "Nur curl mit 200? Dann blockiert der Shop unser Programm, nicht die IP —\n"
+        "und ein Proxy würde nichts ändern."
+    )
 
 
 def main() -> None:
