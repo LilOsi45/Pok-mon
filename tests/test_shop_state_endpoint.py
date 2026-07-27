@@ -57,7 +57,9 @@ class TestEndpoint:
         assert cooldown["consecutive_refusals"] == 1
 
     def test_an_untouched_install_reports_nothing(self):
-        assert _client().get("/healthz/shops").json() == {"shops": {}}
+        body = _client().get("/healthz/shops").json()
+        assert body["shops"] == {}
+        assert body["proxy"]["today"]["requests"] == 0
 
     def test_a_remote_client_gets_a_404(self):
         """Behind the reverse proxy the client address is not 127.0.0.1."""

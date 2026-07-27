@@ -89,6 +89,7 @@ async def healthz_shops(request: Request) -> JSONResponse:
     list of monitored shops is nobody else's business. Requests through the
     reverse proxy arrive with its address, not 127.0.0.1.
     """
+    from app import proxy as app_proxy
     from app.monitor import catalog, fetchers
 
     client = request.client.host if request.client else None
@@ -107,7 +108,7 @@ async def healthz_shops(request: Request) -> JSONResponse:
         }
     for host, buckets in fetchers.cooldown_state().items():
         shops.setdefault(host, {})["cooldown"] = buckets
-    return JSONResponse(content={"shops": shops})
+    return JSONResponse(content={"shops": shops, "proxy": app_proxy.report()})
 
 
 from app.web.routes import router as web_router  # noqa: E402  (import after app creation)

@@ -19,6 +19,7 @@ import asyncio
 
 import pytest
 
+from app import proxy as _proxy
 from app.monitor import fetchers
 
 # Patching fetchers.asyncio.sleep patches the real asyncio module, so the
@@ -37,6 +38,7 @@ def _clean_throttle_state(monkeypatch):
     import app.config as config
 
     config.get_settings.cache_clear()
+    _proxy.reset()
     fetchers.reset_cooldowns()
     fetchers._domain_last_request.clear()
     fetchers._domain_semaphores.clear()
@@ -126,7 +128,7 @@ class TestBothFetchersUseTheGate:
         seen: list[str] = []
         monkeypatch.setattr(fetchers, "domain_gate", _spy_gate(seen))
         monkeypatch.setattr(fetchers, "_robots_allowed", _true)
-        monkeypatch.setattr(fetchers, "get_client", lambda: _OkClient())
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _OkClient())
 
         await fetchers.fetch_httpx("https://www.shop.example/p")
 
@@ -159,7 +161,7 @@ def _spy_gate(seen: list[str]):
     from app.monitor.fetchers import PAGE_BUCKET
 
     @asynccontextmanager
-    async def gate(domain: str, bucket: str = PAGE_BUCKET):
+    async def gate(domain: str, bucket: str = PAGE_BUCKET, **_kw):
         seen.append(domain)
         yield
 

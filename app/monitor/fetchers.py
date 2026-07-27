@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app import proxy
 from app.config import get_settings
 from app.monitor.base import AdapterError, PageResult
 
@@ -33,6 +34,7 @@ class RateLimited(FetchError):
 
 
 _client: httpx.AsyncClient | None = None
+_proxy_client: httpx.AsyncClient | None = None
 _domain_semaphores: dict[str, asyncio.Semaphore] = {}
 _domain_last_request: dict[str, float] = {}  # domain -> monotonic time of last GET
 # (domain, bucket) -> when we may resume / how often we have been refused
@@ -143,7 +145,9 @@ def _domain(url: str) -> str:
 
 
 @asynccontextmanager
-async def domain_gate(domain: str, bucket: str = PAGE_BUCKET) -> AsyncIterator[None]:
+async def domain_gate(
+    domain: str, bucket: str = PAGE_BUCKET, *, skip_cooldown: bool = False
+) -> AsyncIterator[None]:
     """Serialise requests to one shop and keep a minimum gap between them.
 
     Every path that touches a shop must go through here. The browser fetcher
@@ -159,13 +163,15 @@ async def domain_gate(domain: str, bucket: str = PAGE_BUCKET) -> AsyncIterator[N
     checks fail instantly instead of queueing up behind a shop that isn't
     answering anyway.
     """
-    _refuse_if_cooling(domain, bucket)
+    if not skip_cooldown:
+        _refuse_if_cooling(domain, bucket)
     async with _semaphore(domain):
         # Check again: 18 watches on one shop all pass the first check together,
         # then queue here. Without this the first one gets the 429 and the other
         # 17 still go out and each collect their own — exactly the knocking that
         # keeps the ban alive.
-        _refuse_if_cooling(domain, bucket)
+        if not skip_cooldown:
+            _refuse_if_cooling(domain, bucket)
         min_gap = get_settings().per_domain_min_interval_seconds
         last = _domain_last_request.get(domain)
         if last is not None:
@@ -179,7 +185,11 @@ async def domain_gate(domain: str, bucket: str = PAGE_BUCKET) -> AsyncIterator[N
             _domain_last_request[domain] = time.monotonic()
 
 
-def get_client() -> httpx.AsyncClient:
+def get_client(via_proxy: bool = False) -> httpx.AsyncClient:
+    """The shared client. `via_proxy` picks the paid route, kept separate so a
+    proxied request never reuses a connection opened from our own IP."""
+    if via_proxy:
+        return _get_proxy_client()
     global _client
     if _client is None or _client.is_closed:
         settings = get_settings()
@@ -187,17 +197,33 @@ def get_client() -> httpx.AsyncClient:
             headers={"User-Agent": settings.user_agent, **BASE_HEADERS},
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
-            proxy=settings.proxy_url,
+            proxy=None,  # the default route is our own IP and costs nothing
             http2=False,
         )
     return _client
 
 
+def _get_proxy_client() -> httpx.AsyncClient:
+    global _proxy_client
+    if _proxy_client is None or _proxy_client.is_closed:
+        settings = get_settings()
+        _proxy_client = httpx.AsyncClient(
+            headers={"User-Agent": settings.user_agent, **BASE_HEADERS},
+            timeout=settings.request_timeout_seconds,
+            follow_redirects=True,
+            proxy=settings.proxy_url,
+            http2=False,
+        )
+    return _proxy_client
+
+
 async def close_client() -> None:
-    global _client
-    if _client is not None and not _client.is_closed:
-        await _client.aclose()
+    global _client, _proxy_client
+    for client in (_client, _proxy_client):
+        if client is not None and not client.is_closed:
+            await client.aclose()
     _client = None
+    _proxy_client = None
 
 
 def _retry_after(resp: httpx.Response) -> float | None:
@@ -252,12 +278,13 @@ async def fetch_httpx(
         raise RobotsDisallowed(f"robots.txt disallows fetching {url}")
     domain = _domain(url)
     bucket = bucket_of(url)
+    via_proxy = proxy.routes_via_proxy(domain, bucket)
     last_exc: Exception | None = None
-    async with domain_gate(domain, bucket):
+    async with domain_gate(domain, bucket, skip_cooldown=via_proxy):
         for attempt in range(retries):
             start = time.monotonic()
             try:
-                resp = await get_client().get(url, headers=extra_headers or {})
+                resp = await get_client(via_proxy).get(url, headers=extra_headers or {})
             except httpx.HTTPError as exc:
                 last_exc = exc
                 log.warning("fetch attempt %d failed for %s: %s", attempt + 1, url, exc)
@@ -271,14 +298,23 @@ async def fetch_httpx(
                 # per check, from 18 watches. Stand down for the whole domain
                 # and let the scheduler come back once the shop has cooled off.
                 wait = note_refusal(domain, _retry_after(resp), bucket)
+                escalated = proxy.note_refusal(domain, bucket, was_proxied=via_proxy)
+                if escalated:
+                    # A different exit IP is a fresh start; the wait we just
+                    # recorded was for the address that got turned away.
+                    note_success(domain, bucket)
+                    wait = 0.0
                 log.warning(
-                    "HTTP %d from %s — Pause %.0fs für den ganzen Shop",
+                    "HTTP %d from %s (%s) — Pause %.0fs%s",
                     resp.status_code,
                     domain,
+                    bucket,
                     wait,
+                    ", ab jetzt über den Proxy" if escalated else "",
                 )
                 raise RateLimited(f"{domain} antwortet {resp.status_code} — Pause {wait:.0f}s")
             note_success(domain, bucket)
+            proxy.note_success(domain, bucket, len(resp.content), was_proxied=via_proxy)
             json_data = None
             content_type = resp.headers.get("content-type", "")
             if "json" in content_type:

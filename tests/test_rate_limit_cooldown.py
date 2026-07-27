@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from app import proxy
 from app.monitor import fetchers
 
 URL = "https://shop.example/p"
@@ -34,6 +35,7 @@ async def _instant(_seconds: float) -> None:
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
+    proxy.reset()
     fetchers.reset_cooldowns()
     fetchers._domain_last_request.clear()
     fetchers._domain_semaphores.clear()
@@ -103,7 +105,7 @@ class TestFetchBehaviour:
         """The regression: three knocks per check kept the ban alive."""
         client = _serving(*(_resp(429, headers={"Retry-After": "60"}) for _ in range(3)))
         type(client).count = 0
-        monkeypatch.setattr(fetchers, "get_client", lambda: client)
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: client)
 
         with pytest.raises(fetchers.RateLimited):
             await fetchers.fetch_httpx(URL)
@@ -114,7 +116,7 @@ class TestFetchBehaviour:
         """18 watches on one shop must not each send their own request."""
         client = _serving(_resp(429, headers={"Retry-After": "60"}))
         type(client).count = 0
-        monkeypatch.setattr(fetchers, "get_client", lambda: client)
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: client)
 
         results = await asyncio.gather(
             *(fetchers.fetch_httpx(f"https://shop.example/p{i}") for i in range(18)),
@@ -127,7 +129,7 @@ class TestFetchBehaviour:
     async def test_a_blocked_shop_costs_no_time(self, monkeypatch):
         """Failing fast is the point — a stalled check gets dropped by the scheduler."""
         fetchers.note_refusal(DOMAIN, 600.0)
-        monkeypatch.setattr(fetchers, "get_client", lambda: _serving(_resp(200)))
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(200)))
 
         loop = asyncio.get_running_loop()
         start = loop.time()
@@ -136,7 +138,7 @@ class TestFetchBehaviour:
         assert loop.time() - start < 0.5
 
     async def test_503_is_treated_the_same(self, monkeypatch):
-        monkeypatch.setattr(fetchers, "get_client", lambda: _serving(_resp(503)))
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(503)))
 
         with pytest.raises(fetchers.RateLimited):
             await fetchers.fetch_httpx(URL)
@@ -146,7 +148,7 @@ class TestFetchBehaviour:
         fetchers.note_refusal(DOMAIN, 60.0)
         fetchers.reset_cooldowns()  # the wait has passed
         fetchers._domain_penalty[(DOMAIN, fetchers.PAGE_BUCKET)] = 3  # still on probation
-        monkeypatch.setattr(fetchers, "get_client", lambda: _serving(_resp(200, text="ok")))
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(200, text="ok")))
 
         page = await fetchers.fetch_httpx(URL)
 
@@ -155,7 +157,7 @@ class TestFetchBehaviour:
 
     async def test_other_errors_still_bubble_up_normally(self, monkeypatch):
         """A 404 is the shop answering, not refusing — no cooldown."""
-        monkeypatch.setattr(fetchers, "get_client", lambda: _serving(_resp(404)))
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(404)))
 
         page = await fetchers.fetch_httpx(URL)
 
@@ -164,7 +166,7 @@ class TestFetchBehaviour:
 
     async def test_an_http_date_retry_after_does_not_crash(self, monkeypatch):
         headers = {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
-        monkeypatch.setattr(fetchers, "get_client", lambda: _serving(_resp(429, headers=headers)))
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(429, headers=headers)))
 
         with pytest.raises(fetchers.RateLimited):
             await fetchers.fetch_httpx(URL)

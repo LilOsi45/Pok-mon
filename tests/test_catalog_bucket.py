@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app import proxy
 from app.monitor import catalog, fetchers
 
 SHOP = "geeksheaven.de"
@@ -28,6 +29,7 @@ PAGE_URL = f"https://{SHOP}/collections/neuheiten"
 
 @pytest.fixture(autouse=True)
 def _clean():
+    proxy.reset()
     fetchers.reset_cooldowns()
     catalog.clear_cache()
     yield
@@ -92,7 +94,7 @@ class TestThroughFetch:
                     429, headers={"Retry-After": "60"}, request=httpx.Request("GET", url)
                 )
 
-        monkeypatch.setattr(fetchers, "get_client", lambda: Refusing())
+        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: Refusing())
 
         with pytest.raises(fetchers.RateLimited):
             await fetchers.fetch_httpx(CATALOG_URL, respect_robots=False)

@@ -53,6 +53,15 @@ class Settings(BaseSettings):
         "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     )
     proxy_url: str | None = None
+    # Residential proxies bill per gigabyte, so nothing is routed through them
+    # by default. A shop/bucket escalates only after it has actually refused us
+    # this many times, and drops back to the free direct route as soon as it
+    # answers there again. proxy_shops pins hosts to the proxy by hand.
+    proxy_shops: str = ""
+    proxy_after_refusals: int = 2
+    proxy_daily_request_budget: int = 5000
+    proxy_daily_mb_budget: float = 300.0
+    proxy_cost_per_gb: float = 5.0  # for the estimate in the reports only
     request_timeout_seconds: float = 25.0
     # --- scraping API (JS-rendered / bot-protected chains: MediaMarkt, Saturn,
     # Smyths, Pokémon Center …). Set SCRAPER_API_KEY to enable; without a key the
