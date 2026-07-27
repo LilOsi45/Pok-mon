@@ -12,9 +12,13 @@ particular.
 
 The way out is not a longer interval: Shopify shops publish their whole
 catalogue at /products.json, and one such request serves *every* watch on that
-shop. This report probes each domain for that endpoint and shows which watches
-still need a request of their own — those are the ones that actually compete for
-the domain's budget.
+shop. This report shows which watches that catalogue already covers and which
+still need a request of their own — the latter are what compete for the budget.
+
+The numbers come from the running app over localhost, not from the shops. An
+earlier version probed each domain itself, from a process with none of the
+app's cooldown state, so every run sent fresh requests to all 15 shops and
+re-armed the rate limit it was meant to observe.
 """
 
 from __future__ import annotations
@@ -81,18 +85,43 @@ class Domain:
         return "ÜBERLASTET"
 
 
-async def _probe(domain: Domain) -> None:
-    from app.monitor.catalog import catalog, reason
+APP_URL = "http://127.0.0.1:8000/healthz/shops"
 
-    if not any(candidate for _u, _i, candidate in domain.items):
-        domain.probe_error = "nur Scanner/Sammelseiten"
-        return
-    url = next(u for u, _i, c in domain.items if c)
+
+async def _live_state() -> tuple[dict[str, dict], str | None]:
+    """Ask the running app what it knows, instead of asking the shops.
+
+    Probing from here sent a fresh request to all 15 shops on every run, from a
+    process with none of the app's cooldown state — so the diagnostic kept
+    re-arming the very rate limit it was supposed to observe.
+    """
+    import httpx
+
     try:
-        domain.catalog = await catalog(url)
-        domain.probe_error = reason(url)
-    except Exception as exc:  # a diagnostic must never crash on one bad shop
-        domain.probe_error = str(exc)[:60]
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(APP_URL)
+        resp.raise_for_status()
+        return resp.json().get("shops", {}), None
+    except Exception as exc:
+        return {}, f"App nicht erreichbar ({type(exc).__name__}) — läuft der Container?"
+
+
+def _apply(domain: Domain, shops: dict[str, dict]) -> None:
+    # The app keys by netloc, which may still carry a www prefix.
+    state = shops.get(domain.host) or shops.get(f"www.{domain.host}") or {}
+    cat = state.get("catalog") or {}
+    cooldown = state.get("cooldown") or {}
+
+    handles = cat.get("handles") or []
+    domain.catalog = {handle: {} for handle in handles} or None
+    domain.probe_error = cat.get("reason")
+
+    remaining = cooldown.get("remaining_seconds") or 0
+    refusals = cooldown.get("consecutive_refusals") or 0
+    if remaining:
+        domain.probe_error = f"Pause {remaining:.0f}s, {refusals}x abgewiesen"
+    elif not state:
+        domain.probe_error = "noch nicht geprüft"
 
 
 def _host(url: str) -> str:
@@ -121,7 +150,12 @@ async def collect() -> list[Domain]:
         domain.items.append((s.url, s.interval_seconds, False))
 
     domains = sorted(grouped.values(), key=lambda d: -len(d.items))
-    await asyncio.gather(*(_probe(d) for d in domains))
+    shops, error = await _live_state()
+    for domain in domains:
+        if error:
+            domain.probe_error = error
+        else:
+            _apply(domain, shops)
     return domains
 
 
@@ -169,12 +203,7 @@ def render(domains: list[Domain]) -> str:
 
 
 async def report() -> str:
-    try:
-        return render(await collect())
-    finally:
-        from app.monitor.fetchers import close_client
-
-        await close_client()
+    return render(await collect())
 
 
 def main() -> None:

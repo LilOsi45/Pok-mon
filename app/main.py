@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -74,6 +75,42 @@ async def healthz() -> JSONResponse:
             "jobs": len(scheduler.get_jobs()) if scheduler.running else 0,
         },
     )
+
+
+@app.get("/healthz/shops")
+async def healthz_shops(request: Request) -> JSONResponse:
+    """What the running app currently knows about each shop.
+
+    Diagnostics used to probe the shops themselves, which meant every run sent
+    fresh requests and could re-arm the very rate limit it was measuring. This
+    reports the live process state instead — no shop is contacted.
+
+    Localhost only: it is read by tools running inside the container, and the
+    list of monitored shops is nobody else's business. Requests through the
+    reverse proxy arrive with its address, not 127.0.0.1.
+    """
+    from app.monitor import catalog, fetchers
+
+    client = request.client.host if request.client else None
+    if client not in ("127.0.0.1", "::1"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    shops: dict[str, dict] = {}
+    for host, entry in catalog._cache.items():
+        shops.setdefault(host, {})["catalog"] = {
+            "products": len(entry.index) if entry.index else 0,
+            # Handles let a caller tell "covered by the catalogue" apart from
+            # "shop has one, but this product is past the 250-item cap".
+            "handles": sorted(entry.index) if entry.index else [],
+            "reason": entry.reason,
+            "age_seconds": round(time.monotonic() - entry.at, 1),
+        }
+    for host in set(fetchers._domain_blocked_until) | set(fetchers._domain_penalty):
+        shops.setdefault(host, {})["cooldown"] = {
+            "remaining_seconds": round(fetchers.cooldown_remaining(host), 1),
+            "consecutive_refusals": fetchers._domain_penalty.get(host, 0),
+        }
+    return JSONResponse(content={"shops": shops})
 
 
 from app.web.routes import router as web_router  # noqa: E402  (import after app creation)
