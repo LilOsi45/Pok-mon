@@ -78,8 +78,10 @@ async def test_restock_end_to_end(session, watch):
 @pytest.mark.asyncio
 async def test_adapter_error_recorded_never_raises(session, watch):
     check, dispatched = await run_check(session, watch, AdapterError("shop exploded"))
-    assert check.error == "shop exploded"
-    assert watch.last_error == "shop exploded"
+    # The exception type is part of the record: a message alone ("int() argument
+    # must be a string...") identifies neither the failing code nor the value.
+    assert check.error == "AdapterError: shop exploded"
+    assert watch.last_error == "AdapterError: shop exploded"
     assert dispatched.call_count == 0
 
 

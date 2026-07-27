@@ -92,7 +92,7 @@ def render(rows: list[Row]) -> str:
     # Grouped causes first: with 18 watches on one dead shop the same line
     # repeats 18 times, which tells you nothing you can act on.
     reasons = Counter(
-        (row.error or "kein Fehlertext")[:70] for row in broken if row.state == "FEHLER"
+        (row.error or "kein Fehlertext")[:110] for row in broken if row.state == "FEHLER"
     )
     if reasons:
         out.append("Ursachen:")

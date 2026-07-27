@@ -248,7 +248,9 @@ async def run_scan(session: AsyncSession, scan: ProductScan) -> list[ScanItem]:
         found = parse_listing(page.text, page.final_url)
     except Exception as exc:
         scan.last_check_at = utcnow()
-        scan.last_error = str(exc)[:500]
+        # The type matters: a bare message like "int() argument must be..."
+        # says nothing about what actually broke.
+        scan.last_error = f"{type(exc).__name__}: {exc}"[:500]
         await session.commit()
         log.warning("scan %s failed: %s", scan.id, exc)
         return []

@@ -250,8 +250,8 @@ def _wire_bytes(page: PageResult) -> int:
     if raw:
         try:
             return int(raw)
-        except ValueError:
-            pass
+        except (TypeError, ValueError):
+            pass  # duplicated headers arrive as a list, not a number
     return len(page.text.encode())
 
 
@@ -262,7 +262,7 @@ def _retry_after_of(page: PageResult) -> float | None:
         return None
     try:
         return float(raw)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 

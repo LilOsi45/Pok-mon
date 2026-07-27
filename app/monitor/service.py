@@ -218,12 +218,15 @@ async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
             extra={"watch_id": watch.id, "adapter": adapter.slug},
         )
     except AdapterError as exc:
-        check.error = str(exc)
+        # Keep the type in both places. A bare "int() argument must be a string,
+        # a bytes-like object or a real number, not ..." named neither the code
+        # that broke nor the value, and cost a whole round of guessing.
+        check.error = f"{type(exc).__name__}: {exc}"
         watch.last_check_at = utcnow()
-        watch.last_error = str(exc)
+        watch.last_error = check.error
         log.warning("watch %s check failed: %s", watch.id, exc, extra={"watch_id": watch.id})
     except Exception as exc:
-        check.error = f"unexpected: {exc}"
+        check.error = f"unexpected {type(exc).__name__}: {exc}"
         watch.last_check_at = utcnow()
         watch.last_error = check.error
         log.exception("watch %s check crashed", watch.id, extra={"watch_id": watch.id})
