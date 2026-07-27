@@ -24,8 +24,13 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from app.config import get_settings
+from app.monitor.base import AdapterError
 
 log = logging.getLogger(__name__)
+
+
+class CatalogUnavailable(AdapterError):
+    """The shop's catalogue could not be read and single fetches are not safe."""
 
 CATALOG_PATH = "/products.json?limit=250"
 NEGATIVE_TTL_SECONDS = 3600  # settled: not a Shopify shop, stop probing
@@ -57,6 +62,25 @@ def reason(url_or_host: str) -> str | None:
     host = urlsplit(url_or_host).netloc or url_or_host
     entry = _cache.get(host)
     return None if entry is None else entry.reason
+
+
+def verdict(url: str) -> str:
+    """What we know about this shop's catalogue right now.
+
+    "catalog"     — we have it
+    "no-catalog"  — settled: this shop does not publish one
+    "unavailable" — we could not tell (rate-limited, down, not probed yet)
+
+    The third case is the one that matters: falling back to one request per
+    product exactly when the shop is already refusing us is what keeps a
+    Cloudflare rate limit alive.
+    """
+    entry = _cache.get(urlsplit(url).netloc)
+    if entry is None:
+        return "unavailable"
+    if entry.index is not None:
+        return "catalog"
+    return "no-catalog" if entry.ttl >= NEGATIVE_TTL_SECONDS else "unavailable"
 
 
 def product_handle(url: str) -> str | None:

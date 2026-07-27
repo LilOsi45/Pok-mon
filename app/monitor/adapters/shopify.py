@@ -17,7 +17,7 @@ import logging
 from urllib.parse import urlsplit, urlunsplit
 
 from app.models import StockStatus
-from app.monitor.adapters.generic import GenericAdapter
+from app.monitor.adapters.generic import GenericAdapter, guard_single_fetch
 from app.monitor.base import PageResult, RetailerAdapter, StockResult
 from app.monitor.detection import parse_german_price
 
@@ -85,6 +85,7 @@ class ShopifyAdapter(RetailerAdapter):
                     json_data=product,
                     fetched_via="shop-catalog",
                 )
+            guard_single_fetch(url)
         page = await fetchers.fetch_httpx(product_js_url(url), respect_robots=False)
         page.url = url  # keep the human URL as the buy link
         return page

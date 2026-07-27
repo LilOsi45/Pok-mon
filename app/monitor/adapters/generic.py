@@ -13,6 +13,29 @@ from app.monitor.base import PageResult, RetailerAdapter, StockResult
 from app.monitor.detection import detect_stock
 
 
+def guard_single_fetch(url: str) -> None:
+    """Refuse a per-product request while the shop's catalogue is merely unreachable.
+
+    Measured on geeksheaven.de: 18 watches falling back to one request each is
+    what tripped Cloudflare's rate limit, and the limit then blocked the very
+    catalogue request that would have replaced all 18. Five minutes of complete
+    silence cleared it, so the way out is to send nothing until the catalogue
+    answers again — not to keep asking eighteen times a round.
+
+    A shop that has been *confirmed* not to publish a catalogue is unaffected;
+    single fetches are the only option there.
+    """
+    from app.monitor.catalog import CatalogUnavailable, product_handle, reason, verdict
+
+    if product_handle(url) is None:
+        return  # not a product URL, so the catalogue was never going to answer it
+    if verdict(url) == "unavailable":
+        raise CatalogUnavailable(
+            f"Katalog nicht erreichbar ({reason(url) or 'noch nicht geprüft'}) — "
+            "kein Einzelabruf, damit die Sperre ablaufen kann"
+        )
+
+
 class GenericAdapter(RetailerAdapter):
     slug = "generic"
     name = "Generic shop"
@@ -29,10 +52,10 @@ class GenericAdapter(RetailerAdapter):
         from app.config import get_settings
 
         if get_settings().use_shop_catalog and "/products/" in url:
+            from app.monitor import catalog as shop_catalog
             from app.monitor.adapters.shopify import ShopifyAdapter
-            from app.monitor.catalog import product_from_catalog
 
-            product = await product_from_catalog(url)
+            product = await shop_catalog.product_from_catalog(url)
             if product is not None:
                 page = PageResult(
                     url=url,
@@ -43,6 +66,7 @@ class GenericAdapter(RetailerAdapter):
                     fetched_via="shop-catalog",
                 )
                 return page, ShopifyAdapter(self.detection_config).parse(page)
+            guard_single_fetch(url)
         return await super().check(url)
 
     def parse(self, page: PageResult) -> StockResult:
