@@ -334,6 +334,19 @@ class TestUrlNormalisation:
         url = "http://kd12345:pa:ss@geo.birdproxies.com:7777"
         assert proxy.normalize_proxy_url(url) == url
 
+    def test_the_real_birdproxies_line(self):
+        assert (
+            proxy.normalize_proxy_url("residential.birdproxies.com:7777:pool-p1-cc-de:geheim")
+            == "http://pool-p1-cc-de:geheim@residential.birdproxies.com:7777"
+        )
+
+    def test_a_password_that_looks_like_the_port_still_works(self):
+        """Matching on value rather than position dropped it and raised."""
+        assert (
+            proxy.normalize_proxy_url("residential.birdproxies.com:7777:user:7777")
+            == "http://user:7777@residential.birdproxies.com:7777"
+        )
+
     def test_an_at_form_without_a_numeric_port_is_refused(self):
         assert proxy.normalize_proxy_url("u:p@host.de:session") is None
 

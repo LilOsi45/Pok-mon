@@ -103,13 +103,16 @@ def normalize_proxy_url(raw: str | None) -> str | None:
     # getting that wrong by hand is what put a session token where the port
     # belongs and broke every request. Identify the fields instead of trusting
     # a position.
-    port = next((p for p in parts if p.isdigit() and len(p) <= 5), None)
-    host = next((p for p in parts if "." in p and not p.isdigit()), None)
-    if port is None or host is None:
+    # Positions, not values: a password that happens to read like the port
+    # would otherwise be dropped and the unpacking below would raise.
+    port_at = next((i for i, p in enumerate(parts) if p.isdigit() and len(p) <= 5), None)
+    host_at = next((i for i, p in enumerate(parts) if "." in p and not p.isdigit()), None)
+    if port_at is None or host_at is None or port_at == host_at:
         log.error("PROXY_URL has no recognisable host/port — proxy disabled")
         return None
-    user, password = (p for p in parts if p not in (port, host))
-    return f"{scheme}://{user}:{password}@{host}:{port}"
+    rest = [p for i, p in enumerate(parts) if i not in (port_at, host_at)]
+    user, password = rest
+    return f"{scheme}://{user}:{password}@{parts[host_at]}:{parts[port_at]}"
 
 
 def url() -> str | None:
