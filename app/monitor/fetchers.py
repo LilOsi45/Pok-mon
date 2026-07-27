@@ -16,6 +16,7 @@ import httpx
 
 from app import proxy
 from app.config import get_settings
+from app.monitor import browser_tls
 from app.monitor.base import AdapterError, PageResult
 
 log = logging.getLogger(__name__)
@@ -37,9 +38,9 @@ _client: httpx.AsyncClient | None = None
 _proxy_client: httpx.AsyncClient | None = None
 _domain_semaphores: dict[str, asyncio.Semaphore] = {}
 _domain_last_request: dict[str, float] = {}  # domain -> monotonic time of last GET
-# (domain, bucket) -> when we may resume / how often we have been refused
-_domain_blocked_until: dict[tuple[str, str], float] = {}
-_domain_penalty: dict[tuple[str, str], int] = {}
+# (domain, bucket, route) -> when we may resume / how often we were refused
+_domain_blocked_until: dict[tuple[str, str, str], float] = {}
+_domain_penalty: dict[tuple[str, str, str], int] = {}
 _robots_cache: dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]] = {}
 _ROBOTS_TTL = 24 * 3600
 
@@ -61,19 +62,31 @@ MAX_COOLDOWN_SECONDS = 900.0
 CATALOG_BUCKET = "catalog"
 PAGE_BUCKET = "page"
 
+# Cooldowns belong to the exit address that earned them. A refusal collected on
+# our own IP says nothing about a proxy IP, and vice versa — keying them
+# together would either bar a route that was never refused, or (worse, once
+# every request goes through the proxy) let a refusal be ignored entirely.
+DIRECT_ROUTE = "direct"
+PROXY_ROUTE = "proxy"
+
 
 def bucket_of(url: str) -> str:
     path = urlsplit(url).path.rstrip("/")
     return CATALOG_BUCKET if path.endswith("/products.json") else PAGE_BUCKET
 
 
-def cooldown_remaining(domain: str, bucket: str = PAGE_BUCKET) -> float:
-    """Seconds until this kind of request may go to this shop again."""
-    until = _domain_blocked_until.get((domain, bucket))
+def cooldown_remaining(domain: str, bucket: str = PAGE_BUCKET, route: str = DIRECT_ROUTE) -> float:
+    """Seconds until this kind of request may go to this shop over this route."""
+    until = _domain_blocked_until.get((domain, bucket, route))
     return 0.0 if until is None else max(0.0, until - time.monotonic())
 
 
-def note_refusal(domain: str, retry_after: float | None, bucket: str = PAGE_BUCKET) -> float:
+def note_refusal(
+    domain: str,
+    retry_after: float | None,
+    bucket: str = PAGE_BUCKET,
+    route: str = DIRECT_ROUTE,
+) -> float:
     """Record a 429/503 and stand down — longer each time it repeats.
 
     Measured against Cloudflare on a live shop: answering a "Retry-After: 60"
@@ -85,7 +98,7 @@ def note_refusal(domain: str, retry_after: float | None, bucket: str = PAGE_BUCK
     ordinary URL is a sign the whole shop is done with us. A refused
     *catalogue* pauses only itself, because that endpoint has its own budget.
     """
-    key = (domain, bucket)
+    key = (domain, bucket, route)
     penalty = _domain_penalty.get(key, 0)
     base = retry_after if retry_after and retry_after > 0 else DEFAULT_COOLDOWN_SECONDS
     wait = min(base * (2**penalty), MAX_COOLDOWN_SECONDS)
@@ -93,15 +106,15 @@ def note_refusal(domain: str, retry_after: float | None, bucket: str = PAGE_BUCK
     until = time.monotonic() + wait
     _domain_blocked_until[key] = until
     if bucket == PAGE_BUCKET:
-        catalog_key = (domain, CATALOG_BUCKET)
+        catalog_key = (domain, CATALOG_BUCKET, route)
         _domain_blocked_until[catalog_key] = max(_domain_blocked_until.get(catalog_key, 0.0), until)
     return wait
 
 
-def note_success(domain: str, bucket: str = PAGE_BUCKET) -> None:
+def note_success(domain: str, bucket: str = PAGE_BUCKET, route: str = DIRECT_ROUTE) -> None:
     """Clear only this bucket — a working page says nothing about the catalogue."""
-    _domain_penalty.pop((domain, bucket), None)
-    _domain_blocked_until.pop((domain, bucket), None)
+    _domain_penalty.pop((domain, bucket, route), None)
+    _domain_blocked_until.pop((domain, bucket, route), None)
 
 
 def reset_cooldowns() -> None:
@@ -112,16 +125,17 @@ def reset_cooldowns() -> None:
 def cooldown_state() -> dict[str, dict[str, dict[str, float]]]:
     """Per shop, per bucket: what is still blocked and for how long."""
     state: dict[str, dict[str, dict[str, float]]] = {}
-    for domain, bucket in set(_domain_blocked_until) | set(_domain_penalty):
-        state.setdefault(domain, {})[bucket] = {
-            "remaining_seconds": round(cooldown_remaining(domain, bucket), 1),
-            "consecutive_refusals": _domain_penalty.get((domain, bucket), 0),
+    for domain, bucket, route in set(_domain_blocked_until) | set(_domain_penalty):
+        label = bucket if route == DIRECT_ROUTE else f"{bucket}@{route}"
+        state.setdefault(domain, {})[label] = {
+            "remaining_seconds": round(cooldown_remaining(domain, bucket, route), 1),
+            "consecutive_refusals": _domain_penalty.get((domain, bucket, route), 0),
         }
     return state
 
 
-def _refuse_if_cooling(domain: str, bucket: str) -> None:
-    remaining = cooldown_remaining(domain, bucket)
+def _refuse_if_cooling(domain: str, bucket: str, route: str) -> None:
+    remaining = cooldown_remaining(domain, bucket, route)
     if remaining > 0:
         label = "Katalog" if bucket == CATALOG_BUCKET else "Shop"
         raise RateLimited(f"{domain} drosselt uns ({label}) — Pause noch {remaining:.0f}s")
@@ -146,7 +160,7 @@ def _domain(url: str) -> str:
 
 @asynccontextmanager
 async def domain_gate(
-    domain: str, bucket: str = PAGE_BUCKET, *, skip_cooldown: bool = False
+    domain: str, bucket: str = PAGE_BUCKET, *, route: str = DIRECT_ROUTE
 ) -> AsyncIterator[None]:
     """Serialise requests to one shop and keep a minimum gap between them.
 
@@ -163,15 +177,13 @@ async def domain_gate(
     checks fail instantly instead of queueing up behind a shop that isn't
     answering anyway.
     """
-    if not skip_cooldown:
-        _refuse_if_cooling(domain, bucket)
+    _refuse_if_cooling(domain, bucket, route)
     async with _semaphore(domain):
         # Check again: 18 watches on one shop all pass the first check together,
         # then queue here. Without this the first one gets the 429 and the other
         # 17 still go out and each collect their own — exactly the knocking that
         # keeps the ban alive.
-        if not skip_cooldown:
-            _refuse_if_cooling(domain, bucket)
+        _refuse_if_cooling(domain, bucket, route)
         min_gap = get_settings().per_domain_min_interval_seconds
         last = _domain_last_request.get(domain)
         if last is not None:
@@ -219,6 +231,7 @@ def _get_proxy_client() -> httpx.AsyncClient:
 
 async def close_client() -> None:
     global _client, _proxy_client
+    await browser_tls.close()
     for client in (_client, _proxy_client):
         if client is not None and not client.is_closed:
             await client.aclose()
@@ -226,15 +239,48 @@ async def close_client() -> None:
     _proxy_client = None
 
 
-def _retry_after(resp: httpx.Response) -> float | None:
+def _retry_after_of(page: PageResult) -> float | None:
     """Seconds from a Retry-After header, ignoring the HTTP-date form."""
-    raw = resp.headers.get("Retry-After")
+    raw = (page.headers or {}).get("Retry-After") or (page.headers or {}).get("retry-after")
     if not raw:
         return None
     try:
         return float(raw)
     except ValueError:
         return None
+
+
+async def _one_get(url: str, extra_headers: dict[str, str] | None, via_proxy: bool) -> PageResult:
+    """One request, over whichever client is in use, as a PageResult.
+
+    Cloudflare fingerprints the TLS handshake, so which client sends the request
+    decides whether it is answered at all — measured on this server, httpx got
+    429 where curl got 200 in the same second. browser_tls speaks with a real
+    Chrome handshake; httpx stays as the fallback when it is not installed.
+    """
+    settings = get_settings()
+    if settings.browser_tls and browser_tls.available():
+        return await browser_tls.fetch(
+            url,
+            extra_headers=extra_headers,
+            proxy=settings.proxy_url if via_proxy else None,
+        )
+    resp = await get_client(via_proxy).get(url, headers=extra_headers or {})
+    json_data = None
+    if "json" in resp.headers.get("content-type", ""):
+        try:
+            json_data = resp.json()
+        except ValueError:
+            pass
+    return PageResult(
+        url=url,
+        final_url=str(resp.url),
+        status_code=resp.status_code,
+        text=resp.text,
+        json_data=json_data,
+        headers=dict(resp.headers),
+        fetched_via="httpx",
+    )
 
 
 def _semaphore(domain: str) -> asyncio.Semaphore:
@@ -279,59 +325,39 @@ async def fetch_httpx(
     domain = _domain(url)
     bucket = bucket_of(url)
     via_proxy = proxy.routes_via_proxy(domain, bucket)
+    route = PROXY_ROUTE if via_proxy else DIRECT_ROUTE
     last_exc: Exception | None = None
-    async with domain_gate(domain, bucket, skip_cooldown=via_proxy):
+    async with domain_gate(domain, bucket, route=route):
         for attempt in range(retries):
             start = time.monotonic()
             try:
-                resp = await get_client(via_proxy).get(url, headers=extra_headers or {})
-            except httpx.HTTPError as exc:
+                page = await _one_get(url, extra_headers, via_proxy)
+            except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
                 last_exc = exc
                 log.warning("fetch attempt %d failed for %s: %s", attempt + 1, url, exc)
                 await asyncio.sleep(min(2**attempt, MAX_BACKOFF_SECONDS) + random.uniform(0, 1))
                 continue
-            elapsed_ms = int((time.monotonic() - start) * 1000)
-            if resp.status_code in (429, 503):
+            page.elapsed_ms = int((time.monotonic() - start) * 1000)
+            if page.status_code in (429, 503):
                 # Do not retry. Retrying a refusal inside the same check is what
                 # kept the Cloudflare rate limit permanently topped up: the shop
                 # asked for 60 s and got knocked on again after 8, three times
                 # per check, from 18 watches. Stand down for the whole domain
                 # and let the scheduler come back once the shop has cooled off.
-                wait = note_refusal(domain, _retry_after(resp), bucket)
+                wait = note_refusal(domain, _retry_after_of(page), bucket, route)
                 escalated = proxy.note_refusal(domain, bucket, was_proxied=via_proxy)
-                if escalated:
-                    # A different exit IP is a fresh start; the wait we just
-                    # recorded was for the address that got turned away.
-                    note_success(domain, bucket)
-                    wait = 0.0
                 log.warning(
                     "HTTP %d from %s (%s) — Pause %.0fs%s",
-                    resp.status_code,
+                    page.status_code,
                     domain,
                     bucket,
                     wait,
                     ", ab jetzt über den Proxy" if escalated else "",
                 )
-                raise RateLimited(f"{domain} antwortet {resp.status_code} — Pause {wait:.0f}s")
-            note_success(domain, bucket)
-            proxy.note_success(domain, bucket, len(resp.content), was_proxied=via_proxy)
-            json_data = None
-            content_type = resp.headers.get("content-type", "")
-            if "json" in content_type:
-                try:
-                    json_data = resp.json()
-                except ValueError:
-                    pass
-            return PageResult(
-                url=url,
-                final_url=str(resp.url),
-                status_code=resp.status_code,
-                text=resp.text,
-                json_data=json_data,
-                headers=dict(resp.headers),
-                elapsed_ms=elapsed_ms,
-                fetched_via="httpx",
-            )
+                raise RateLimited(f"{domain} antwortet {page.status_code} — Pause {wait:.0f}s")
+            note_success(domain, bucket, route)
+            proxy.note_success(domain, bucket, len(page.text.encode()), was_proxied=via_proxy)
+            return page
     raise FetchError(f"all fetch attempts failed for {url}: {last_exc}")
 
 

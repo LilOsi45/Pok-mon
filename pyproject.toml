@@ -12,6 +12,10 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "apscheduler>=3.10,<4",
     "httpx>=0.27",
+    # Cloudflare fingerprints the TLS handshake: measured on the live server,
+    # httpx got 429 where curl got 200 from the same IP in the same second.
+    # curl_cffi reproduces a real Chrome handshake so shops answer us at all.
+    "curl_cffi>=0.7",
     "selectolax>=0.3.21",
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.20",

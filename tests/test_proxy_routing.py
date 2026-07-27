@@ -24,6 +24,7 @@ SHOP = "geeksheaven.de"
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setenv("PROXY_URL", "http://user:pw@proxy.example:8000")
+    monkeypatch.setenv("PROXY_MODE", "on-refusal")
     monkeypatch.setenv("PROXY_AFTER_REFUSALS", "2")
     monkeypatch.setenv("PROXY_SHOPS", "")
     monkeypatch.setenv("PROXY_DAILY_REQUEST_BUDGET", "5000")
@@ -37,7 +38,75 @@ def _clean(monkeypatch):
     config.get_settings.cache_clear()
 
 
-class TestNothingIsProxiedByDefault:
+class TestAlwaysMode:
+    """The operator bought a proxy to remove gaps, so by default everything uses it."""
+
+    def _always(self, monkeypatch):
+        monkeypatch.setenv("PROXY_MODE", "always")
+        import app.config as config
+
+        config.get_settings.cache_clear()
+
+    def test_every_shop_goes_through_it(self, monkeypatch):
+        self._always(monkeypatch)
+        assert proxy.routes_via_proxy(SHOP, PAGE_BUCKET) is True
+        assert proxy.routes_via_proxy("kartenmeier.de", CATALOG_BUCKET) is True
+
+    def test_without_a_proxy_url_nothing_changes(self, monkeypatch):
+        monkeypatch.delenv("PROXY_URL", raising=False)
+        self._always(monkeypatch)
+        assert proxy.routes_via_proxy(SHOP, PAGE_BUCKET) is False
+
+    def test_a_spent_budget_falls_back_instead_of_failing(self, monkeypatch):
+        """A used-up budget must slow us down, never take the tracker offline."""
+        monkeypatch.setenv("PROXY_DAILY_MB_BUDGET", "1")
+        self._always(monkeypatch)
+        proxy.note_success(SHOP, PAGE_BUCKET, 2_000_000, was_proxied=True)
+
+        assert proxy.routes_via_proxy(SHOP, PAGE_BUCKET) is False
+
+
+class TestCooldownsFollowTheRoute:
+    """Regression in my own design: with "always" every request would have
+    skipped the cooldown check, disabling the rate-limit protection entirely.
+
+    A refusal belongs to the address that earned it. Keying cooldowns by route
+    keeps both halves honest: switching to the proxy is a genuine fresh start,
+    and a proxy that gets refused is still made to wait.
+    """
+
+    def test_a_direct_refusal_does_not_bar_the_proxy(self):
+        from app.monitor import fetchers
+
+        fetchers.reset_cooldowns()
+        fetchers.note_refusal(SHOP, 60.0, PAGE_BUCKET, fetchers.DIRECT_ROUTE)
+
+        assert fetchers.cooldown_remaining(SHOP, PAGE_BUCKET, fetchers.DIRECT_ROUTE) > 0
+        assert fetchers.cooldown_remaining(SHOP, PAGE_BUCKET, fetchers.PROXY_ROUTE) == 0
+        fetchers.reset_cooldowns()
+
+    def test_a_refused_proxy_still_has_to_wait(self):
+        """Otherwise "always" would mean "never back off"."""
+        from app.monitor import fetchers
+
+        fetchers.reset_cooldowns()
+        fetchers.note_refusal(SHOP, 60.0, PAGE_BUCKET, fetchers.PROXY_ROUTE)
+
+        assert fetchers.cooldown_remaining(SHOP, PAGE_BUCKET, fetchers.PROXY_ROUTE) > 0
+        fetchers.reset_cooldowns()
+
+    def test_repeated_proxy_refusals_still_back_off(self):
+        from app.monitor import fetchers
+
+        fetchers.reset_cooldowns()
+        waits = [
+            fetchers.note_refusal(SHOP, 60.0, PAGE_BUCKET, fetchers.PROXY_ROUTE) for _ in range(3)
+        ]
+        assert waits == [60.0, 120.0, 240.0]
+        fetchers.reset_cooldowns()
+
+
+class TestOnRefusalMode:
     def test_a_healthy_shop_stays_free(self):
         assert proxy.routes_via_proxy(SHOP, PAGE_BUCKET) is False
 

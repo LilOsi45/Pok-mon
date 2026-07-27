@@ -54,7 +54,11 @@ def _product_image(product: dict) -> str | None:
         image = product["image"]
     elif product.get("images"):
         first = product["images"][0]
-        image = first if isinstance(first, str) else (first.get("src") if isinstance(first, dict) else None)
+        image = (
+            first
+            if isinstance(first, str)
+            else (first.get("src") if isinstance(first, dict) else None)
+        )
     if image and image.startswith("//"):  # Shopify returns protocol-relative URLs
         image = f"https:{image}"
     return image

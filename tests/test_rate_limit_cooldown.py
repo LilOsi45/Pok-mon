@@ -147,13 +147,16 @@ class TestFetchBehaviour:
     async def test_a_good_answer_clears_an_earlier_penalty(self, monkeypatch):
         fetchers.note_refusal(DOMAIN, 60.0)
         fetchers.reset_cooldowns()  # the wait has passed
-        fetchers._domain_penalty[(DOMAIN, fetchers.PAGE_BUCKET)] = 3  # still on probation
-        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(200, text="ok")))
+        key = (DOMAIN, fetchers.PAGE_BUCKET, fetchers.DIRECT_ROUTE)
+        fetchers._domain_penalty[key] = 3  # still on probation
+        monkeypatch.setattr(
+            fetchers, "get_client", lambda *_a, **_k: _serving(_resp(200, text="ok"))
+        )
 
         page = await fetchers.fetch_httpx(URL)
 
         assert page.status_code == 200
-        assert fetchers._domain_penalty.get((DOMAIN, fetchers.PAGE_BUCKET)) is None
+        assert fetchers._domain_penalty.get(key) is None
 
     async def test_other_errors_still_bubble_up_normally(self, monkeypatch):
         """A 404 is the shop answering, not refusing — no cooldown."""
@@ -166,7 +169,9 @@ class TestFetchBehaviour:
 
     async def test_an_http_date_retry_after_does_not_crash(self, monkeypatch):
         headers = {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
-        monkeypatch.setattr(fetchers, "get_client", lambda *_a, **_k: _serving(_resp(429, headers=headers)))
+        monkeypatch.setattr(
+            fetchers, "get_client", lambda *_a, **_k: _serving(_resp(429, headers=headers))
+        )
 
         with pytest.raises(fetchers.RateLimited):
             await fetchers.fetch_httpx(URL)

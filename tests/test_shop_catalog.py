@@ -212,9 +212,7 @@ class TestAdapterIntegration:
     async def test_generic_adapter_reads_stock_from_the_catalog(self):
         """geeksheaven resolves to the generic adapter — it must benefit too."""
         with patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=catalog_page())):
-            page, result = await GenericAdapter().check(
-                f"{SHOP}/products/pokemon-30-jahre-bundle"
-            )
+            page, result = await GenericAdapter().check(f"{SHOP}/products/pokemon-30-jahre-bundle")
         assert page.fetched_via == "shop-catalog"
         assert result.status == StockStatus.IN_STOCK
         assert result.price == 25.99
@@ -243,7 +241,9 @@ class TestAdapterIntegration:
             url=f"{SHOP}/products/spaet.js",
             final_url=f"{SHOP}/products/spaet.js",
             status_code=200,
-            text=json.dumps({"title": "Spät", "variants": [{"id": 9, "available": True, "price": 1999}]}),
+            text=json.dumps(
+                {"title": "Spät", "variants": [{"id": 9, "available": True, "price": 1999}]}
+            ),
         )
 
         async def fake_fetch(url, **_kw):

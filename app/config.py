@@ -52,11 +52,19 @@ class Settings(BaseSettings):
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     )
+    # Cloudflare fingerprints the TLS handshake, and Python's default stack
+    # has a distinctive one: measured on this server, httpx got 429 where curl
+    # got 200 in the same second. Fetch through a real Chrome handshake.
+    browser_tls: bool = True
     proxy_url: str | None = None
-    # Residential proxies bill per gigabyte, so nothing is routed through them
-    # by default. A shop/bucket escalates only after it has actually refused us
-    # this many times, and drops back to the free direct route as soon as it
-    # answers there again. proxy_shops pins hosts to the proxy by hand.
+    # "always": once PROXY_URL is set, every shop request goes through it —
+    # steady behaviour, no gaps while a shop decides it dislikes our address.
+    # "on-refusal": stay on the free direct route and move a shop over only
+    # after it has actually refused us, which uses far less paid traffic.
+    proxy_mode: Literal["always", "on-refusal"] = "always"
+    # Residential proxies bill per gigabyte. proxy_shops pins hosts to the proxy
+    # by hand; in "on-refusal" mode a shop also escalates on its own and drops
+    # back to the free route as soon as it answers there again.
     proxy_shops: str = ""
     proxy_after_refusals: int = 2
     proxy_daily_request_budget: int = 5000

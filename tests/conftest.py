@@ -15,6 +15,23 @@ def load_fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
 
+@pytest.fixture(autouse=True)
+def _no_real_network(monkeypatch):
+    """Keep the suite on the stubbable httpx path.
+
+    The browser-TLS fetcher talks through libcurl, so a test that stubs
+    `get_client` would not intercept it and the request would go to the real
+    internet — the suite hung the first time this was wired up. Tests that
+    exercise the browser path opt in explicitly.
+    """
+    import app.config as config
+
+    monkeypatch.setenv("BROWSER_TLS", "false")
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
+
+
 @pytest_asyncio.fixture
 async def session():
     engine = create_async_engine("sqlite+aiosqlite://")

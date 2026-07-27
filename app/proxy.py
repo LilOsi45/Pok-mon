@@ -100,9 +100,16 @@ def budget_exhausted() -> bool:
 def routes_via_proxy(domain: str, bucket: str) -> bool:
     if not configured():
         return False
-    if not (_always(domain) or (domain, bucket) in _state.escalated):
+    wanted = (
+        get_settings().proxy_mode == "always"
+        or _always(domain)
+        or (domain, bucket) in _state.escalated
+    )
+    if not wanted:
         return False
     if budget_exhausted():
+        # Falling back to the direct route keeps checks running rather than
+        # failing outright — a spent budget must not become an outage.
         log.warning("proxy budget for today is used up — %s/%s stays direct", domain, bucket)
         return False
     return True
