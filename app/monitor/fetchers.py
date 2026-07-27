@@ -239,6 +239,22 @@ async def close_client() -> None:
     _proxy_client = None
 
 
+def _wire_bytes(page: PageResult) -> int:
+    """What the proxy actually bills for.
+
+    Bodies travel gzipped, so the decoded text overstates the cost several
+    times over — enough to trip a daily budget long before the real volume is
+    used. Content-Length is the transferred size when the shop sends it.
+    """
+    raw = (page.headers or {}).get("content-length") or (page.headers or {}).get("Content-Length")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return len(page.text.encode())
+
+
 def _retry_after_of(page: PageResult) -> float | None:
     """Seconds from a Retry-After header, ignoring the HTTP-date form."""
     raw = (page.headers or {}).get("Retry-After") or (page.headers or {}).get("retry-after")
@@ -356,7 +372,7 @@ async def fetch_httpx(
                 )
                 raise RateLimited(f"{domain} antwortet {page.status_code} — Pause {wait:.0f}s")
             note_success(domain, bucket, route)
-            proxy.note_success(domain, bucket, len(page.text.encode()), was_proxied=via_proxy)
+            proxy.note_success(domain, bucket, _wire_bytes(page), was_proxied=via_proxy)
             return page
     raise FetchError(f"all fetch attempts failed for {url}: {last_exc}")
 

@@ -55,9 +55,23 @@ class _Entry:
     index: dict[str, dict] | None
     reason: str
     ttl: float
+    # Validators from the last successful fetch. Sending them back lets the shop
+    # answer "unchanged" in a few hundred bytes instead of resending the whole
+    # catalogue — geeksheaven's is 936 KB, which at one fetch per 45 s would be
+    # ~900 MB a day through a metered proxy for a single shop.
+    etag: str | None = None
+    last_modified: str | None = None
 
     def fresh(self, now: float) -> bool:
         return now - self.at < self.ttl
+
+    def validators(self) -> dict[str, str]:
+        headers = {}
+        if self.etag:
+            headers["If-None-Match"] = self.etag
+        if self.last_modified:
+            headers["If-Modified-Since"] = self.last_modified
+        return headers
 
 
 _cache: dict[str, _Entry] = {}
@@ -119,29 +133,55 @@ def _index(products: list) -> dict[str, dict]:
     }
 
 
-async def _load(base: str) -> tuple[dict[str, dict] | None, str, bool]:
-    """Returns (index, human reason, transient).
+@dataclass(frozen=True)
+class _Loaded:
+    index: dict[str, dict] | None
+    reason: str
+    transient: bool
+    unchanged: bool = False
+    etag: str | None = None
+    last_modified: str | None = None
+
+
+async def _load(base: str, previous: _Entry | None = None) -> _Loaded:
+    """Fetch the catalogue, asking the shop to skip the body if nothing changed.
 
     `transient` separates "ask again in two minutes" from "this shop has no
-    catalogue, leave it alone for an hour".
+    catalogue, leave it alone for an hour". `unchanged` means the shop answered
+    304 and the previous index is still current — the cheap case we want.
     """
     from app.monitor import fetchers
 
+    conditional = previous.validators() if previous and previous.index else {}
     try:
-        page = await fetchers.fetch_httpx(f"{base}{CATALOG_PATH}", respect_robots=False)
+        page = await fetchers.fetch_httpx(
+            f"{base}{CATALOG_PATH}", respect_robots=False, extra_headers=conditional or None
+        )
     except fetchers.RateLimited as exc:
-        return None, str(exc), True
+        return _Loaded(None, str(exc), True)
     except Exception as exc:
         log.info("catalog fetch failed for %s: %s", base, exc)
-        return None, f"Abruf fehlgeschlagen ({type(exc).__name__})", True
+        return _Loaded(None, f"Abruf fehlgeschlagen ({type(exc).__name__})", True)
+
+    headers = {k.lower(): v for k, v in (page.headers or {}).items()}
+    if page.status_code == 304 and previous is not None:
+        # The cheap case: a few hundred bytes instead of the whole catalogue.
+        return _Loaded(
+            previous.index,
+            f"{len(previous.index or {})} Produkte (unverändert)",
+            False,
+            unchanged=True,
+            etag=headers.get("etag") or previous.etag,
+            last_modified=headers.get("last-modified") or previous.last_modified,
+        )
     # fetch_httpx raises RateLimited on these, but a fetcher that returns the
     # response instead must not be read as "this shop has no catalogue".
     if page.status_code == 429:
-        return None, "HTTP 429 — Shop drosselt uns", True
+        return _Loaded(None, "HTTP 429 — Shop drosselt uns", True)
     if page.status_code >= 500:
-        return None, f"HTTP {page.status_code} — Shop-Fehler", True
+        return _Loaded(None, f"HTTP {page.status_code} — Shop-Fehler", True)
     if page.status_code != 200:
-        return None, f"HTTP {page.status_code} — kein /products.json", False
+        return _Loaded(None, f"HTTP {page.status_code} — kein /products.json", False)
 
     data = page.json_data
     if data is None and page.text:
@@ -150,15 +190,21 @@ async def _load(base: str) -> tuple[dict[str, dict] | None, str, bool]:
         try:
             data = json.loads(page.text)
         except ValueError:
-            return None, "Antwort ist kein JSON — kein Shopify-Shop", False
+            return _Loaded(None, "Antwort ist kein JSON — kein Shopify-Shop", False)
     if not isinstance(data, dict) or not isinstance(data.get("products"), list):
-        return None, "JSON ohne 'products' — kein Shopify-Shop", False
+        return _Loaded(None, "JSON ohne 'products' — kein Shopify-Shop", False)
 
     index = _index(data["products"])
     if not index:
-        return None, "Katalog ist leer", True
+        return _Loaded(None, "Katalog ist leer", True)
     log.info("catalog for %s: %d products", base, len(index))
-    return index, f"{len(index)} Produkte", False
+    return _Loaded(
+        index,
+        f"{len(index)} Produkte",
+        False,
+        etag=headers.get("etag"),
+        last_modified=headers.get("last-modified"),
+    )
 
 
 async def catalog(url: str) -> dict[str, dict] | None:
@@ -184,17 +230,24 @@ async def catalog(url: str) -> dict[str, dict] | None:
         if entry is not None and entry.fresh(time.monotonic()):
             return entry.index
 
-        index, why, transient = await _load(base)
-        if index is not None:
+        loaded = await _load(base, entry)
+        if loaded.index is not None:
             _misses.pop(host, None)
             ttl = get_settings().catalog_ttl_seconds
-        elif transient:
+        elif loaded.transient:
             ttl = _retry_ttl(host)
             _misses[host] = min(_misses.get(host, 0) + 1, 4)
         else:
             ttl = NEGATIVE_TTL_SECONDS
-        _cache[host] = _Entry(at=time.monotonic(), index=index, reason=why, ttl=ttl)
-        return index
+        _cache[host] = _Entry(
+            at=time.monotonic(),
+            index=loaded.index,
+            reason=loaded.reason,
+            ttl=ttl,
+            etag=loaded.etag,
+            last_modified=loaded.last_modified,
+        )
+        return loaded.index
 
 
 async def product_from_catalog(url: str) -> dict | None:
