@@ -105,11 +105,8 @@ async def healthz_shops(request: Request) -> JSONResponse:
             "reason": entry.reason,
             "age_seconds": round(time.monotonic() - entry.at, 1),
         }
-    for host in set(fetchers._domain_blocked_until) | set(fetchers._domain_penalty):
-        shops.setdefault(host, {})["cooldown"] = {
-            "remaining_seconds": round(fetchers.cooldown_remaining(host), 1),
-            "consecutive_refusals": fetchers._domain_penalty.get(host, 0),
-        }
+    for host, buckets in fetchers.cooldown_state().items():
+        shops.setdefault(host, {})["cooldown"] = buckets
     return JSONResponse(content={"shops": shops})
 
 

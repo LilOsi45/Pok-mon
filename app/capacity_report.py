@@ -116,8 +116,15 @@ def _apply(domain: Domain, shops: dict[str, dict]) -> None:
     domain.catalog = {handle: {} for handle in handles} or None
     domain.probe_error = cat.get("reason")
 
-    remaining = cooldown.get("remaining_seconds") or 0
-    refusals = cooldown.get("consecutive_refusals") or 0
+    # The catalogue endpoint and ordinary pages are metered separately, so show
+    # whichever is actually holding this shop back.
+    worst = max(
+        cooldown.values(),
+        key=lambda b: b.get("remaining_seconds") or 0,
+        default={},
+    )
+    remaining = worst.get("remaining_seconds") or 0
+    refusals = worst.get("consecutive_refusals") or 0
     if remaining:
         domain.probe_error = f"Pause {remaining:.0f}s, {refusals}x abgewiesen"
     elif not state:

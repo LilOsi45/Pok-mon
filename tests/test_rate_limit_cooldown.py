@@ -145,13 +145,13 @@ class TestFetchBehaviour:
     async def test_a_good_answer_clears_an_earlier_penalty(self, monkeypatch):
         fetchers.note_refusal(DOMAIN, 60.0)
         fetchers.reset_cooldowns()  # the wait has passed
-        fetchers._domain_penalty[DOMAIN] = 3  # but the shop is still on probation
+        fetchers._domain_penalty[(DOMAIN, fetchers.PAGE_BUCKET)] = 3  # still on probation
         monkeypatch.setattr(fetchers, "get_client", lambda: _serving(_resp(200, text="ok")))
 
         page = await fetchers.fetch_httpx(URL)
 
         assert page.status_code == 200
-        assert fetchers._domain_penalty.get(DOMAIN) is None
+        assert fetchers._domain_penalty.get((DOMAIN, fetchers.PAGE_BUCKET)) is None
 
     async def test_other_errors_still_bubble_up_normally(self, monkeypatch):
         """A 404 is the shop answering, not refusing — no cooldown."""

@@ -35,45 +35,71 @@ class RateLimited(FetchError):
 _client: httpx.AsyncClient | None = None
 _domain_semaphores: dict[str, asyncio.Semaphore] = {}
 _domain_last_request: dict[str, float] = {}  # domain -> monotonic time of last GET
-_domain_blocked_until: dict[str, float] = {}  # domain -> monotonic time we may resume
-_domain_penalty: dict[str, int] = {}  # domain -> consecutive refusals
+# (domain, bucket) -> when we may resume / how often we have been refused
+_domain_blocked_until: dict[tuple[str, str], float] = {}
+_domain_penalty: dict[tuple[str, str], int] = {}
 _robots_cache: dict[str, tuple[float, urllib.robotparser.RobotFileParser | None]] = {}
 _ROBOTS_TTL = 24 * 3600
 
 # A check must finish well inside its own poll interval, otherwise the next run
 # collides with it and gets dropped. Never wait longer than this inside one fetch.
 MAX_BACKOFF_SECONDS = 8.0
-# How long we stand down from a shop that refuses us. Doubles with every
-# consecutive refusal, so the rate settles at whatever the shop tolerates.
+# How long we stand down after a refusal. Doubles with every consecutive one,
+# so the rate settles at whatever the shop tolerates.
 DEFAULT_COOLDOWN_SECONDS = 60.0
 MAX_COOLDOWN_SECONDS = 900.0
 
+# Shopify meters /products.json far more strictly than ordinary pages, and the
+# two limits are separate: measured on geeksheaven.de, the catalogue kept
+# answering 429 while the scanner's collection pages came back 200 the whole
+# time. Tracking one cooldown for the whole shop was wrong in both directions —
+# it took the working pages offline, and every successful page reset the
+# catalogue's penalty back to zero, so its wait never grew past 60s and
+# /products.json never got the quiet stretch it needs.
+CATALOG_BUCKET = "catalog"
+PAGE_BUCKET = "page"
 
-def cooldown_remaining(domain: str) -> float:
-    """Seconds until this shop may be contacted again."""
-    until = _domain_blocked_until.get(domain)
+
+def bucket_of(url: str) -> str:
+    path = urlsplit(url).path.rstrip("/")
+    return CATALOG_BUCKET if path.endswith("/products.json") else PAGE_BUCKET
+
+
+def cooldown_remaining(domain: str, bucket: str = PAGE_BUCKET) -> float:
+    """Seconds until this kind of request may go to this shop again."""
+    until = _domain_blocked_until.get((domain, bucket))
     return 0.0 if until is None else max(0.0, until - time.monotonic())
 
 
-def note_refusal(domain: str, retry_after: float | None) -> float:
+def note_refusal(domain: str, retry_after: float | None, bucket: str = PAGE_BUCKET) -> float:
     """Record a 429/503 and stand down — longer each time it repeats.
 
     Measured against Cloudflare on a live shop: answering a "Retry-After: 60"
     by retrying after 8 seconds, three times per check, kept the rate limit
     permanently topped up. The ban never expired because we never stopped
     knocking. Waiting the shop out is the only thing that clears it.
+
+    A refused *page* pauses the catalogue too — being turned away on an
+    ordinary URL is a sign the whole shop is done with us. A refused
+    *catalogue* pauses only itself, because that endpoint has its own budget.
     """
-    penalty = _domain_penalty.get(domain, 0)
+    key = (domain, bucket)
+    penalty = _domain_penalty.get(key, 0)
     base = retry_after if retry_after and retry_after > 0 else DEFAULT_COOLDOWN_SECONDS
     wait = min(base * (2**penalty), MAX_COOLDOWN_SECONDS)
-    _domain_penalty[domain] = min(penalty + 1, 8)
-    _domain_blocked_until[domain] = time.monotonic() + wait
+    _domain_penalty[key] = min(penalty + 1, 8)
+    until = time.monotonic() + wait
+    _domain_blocked_until[key] = until
+    if bucket == PAGE_BUCKET:
+        catalog_key = (domain, CATALOG_BUCKET)
+        _domain_blocked_until[catalog_key] = max(_domain_blocked_until.get(catalog_key, 0.0), until)
     return wait
 
 
-def note_success(domain: str) -> None:
-    _domain_penalty.pop(domain, None)
-    _domain_blocked_until.pop(domain, None)
+def note_success(domain: str, bucket: str = PAGE_BUCKET) -> None:
+    """Clear only this bucket — a working page says nothing about the catalogue."""
+    _domain_penalty.pop((domain, bucket), None)
+    _domain_blocked_until.pop((domain, bucket), None)
 
 
 def reset_cooldowns() -> None:
@@ -81,10 +107,23 @@ def reset_cooldowns() -> None:
     _domain_penalty.clear()
 
 
-def _refuse_if_cooling(domain: str) -> None:
-    remaining = cooldown_remaining(domain)
+def cooldown_state() -> dict[str, dict[str, dict[str, float]]]:
+    """Per shop, per bucket: what is still blocked and for how long."""
+    state: dict[str, dict[str, dict[str, float]]] = {}
+    for domain, bucket in set(_domain_blocked_until) | set(_domain_penalty):
+        state.setdefault(domain, {})[bucket] = {
+            "remaining_seconds": round(cooldown_remaining(domain, bucket), 1),
+            "consecutive_refusals": _domain_penalty.get((domain, bucket), 0),
+        }
+    return state
+
+
+def _refuse_if_cooling(domain: str, bucket: str) -> None:
+    remaining = cooldown_remaining(domain, bucket)
     if remaining > 0:
-        raise RateLimited(f"{domain} drosselt uns — Pause noch {remaining:.0f}s")
+        label = "Katalog" if bucket == CATALOG_BUCKET else "Shop"
+        raise RateLimited(f"{domain} drosselt uns ({label}) — Pause noch {remaining:.0f}s")
+
 
 BASE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
@@ -104,7 +143,7 @@ def _domain(url: str) -> str:
 
 
 @asynccontextmanager
-async def domain_gate(domain: str) -> AsyncIterator[None]:
+async def domain_gate(domain: str, bucket: str = PAGE_BUCKET) -> AsyncIterator[None]:
     """Serialise requests to one shop and keep a minimum gap between them.
 
     Every path that touches a shop must go through here. The browser fetcher
@@ -120,13 +159,13 @@ async def domain_gate(domain: str) -> AsyncIterator[None]:
     checks fail instantly instead of queueing up behind a shop that isn't
     answering anyway.
     """
-    _refuse_if_cooling(domain)
+    _refuse_if_cooling(domain, bucket)
     async with _semaphore(domain):
         # Check again: 18 watches on one shop all pass the first check together,
         # then queue here. Without this the first one gets the 429 and the other
         # 17 still go out and each collect their own — exactly the knocking that
         # keeps the ban alive.
-        _refuse_if_cooling(domain)
+        _refuse_if_cooling(domain, bucket)
         min_gap = get_settings().per_domain_min_interval_seconds
         last = _domain_last_request.get(domain)
         if last is not None:
@@ -212,8 +251,9 @@ async def fetch_httpx(
     if respect_robots and not await _robots_allowed(url):
         raise RobotsDisallowed(f"robots.txt disallows fetching {url}")
     domain = _domain(url)
+    bucket = bucket_of(url)
     last_exc: Exception | None = None
-    async with domain_gate(domain):
+    async with domain_gate(domain, bucket):
         for attempt in range(retries):
             start = time.monotonic()
             try:
@@ -230,7 +270,7 @@ async def fetch_httpx(
                 # asked for 60 s and got knocked on again after 8, three times
                 # per check, from 18 watches. Stand down for the whole domain
                 # and let the scheduler come back once the shop has cooled off.
-                wait = note_refusal(domain, _retry_after(resp))
+                wait = note_refusal(domain, _retry_after(resp), bucket)
                 log.warning(
                     "HTTP %d from %s — Pause %.0fs für den ganzen Shop",
                     resp.status_code,
@@ -238,7 +278,7 @@ async def fetch_httpx(
                     wait,
                 )
                 raise RateLimited(f"{domain} antwortet {resp.status_code} — Pause {wait:.0f}s")
-            note_success(domain)
+            note_success(domain, bucket)
             json_data = None
             content_type = resp.headers.get("content-type", "")
             if "json" in content_type:
@@ -346,9 +386,7 @@ async def _fetch_brightdata(
     )
 
 
-async def fetch_scraperapi(
-    url: str, *, extra_headers: dict[str, str] | None = None
-) -> PageResult:
+async def fetch_scraperapi(url: str, *, extra_headers: dict[str, str] | None = None) -> PageResult:
     """Fetch a URL through the configured scraping API. Falls back to plain
     httpx when no SCRAPER_API_KEY is set, so watches never hard-fail."""
     settings = get_settings()
@@ -451,8 +489,7 @@ async def fetch_playwright(
                 "**/*",
                 lambda route: (
                     route.abort()
-                    if route.request.resource_type
-                    in ("image", "media", "font", "stylesheet")
+                    if route.request.resource_type in ("image", "media", "font", "stylesheet")
                     else route.continue_()
                 ),
             )

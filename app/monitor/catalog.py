@@ -32,9 +32,21 @@ log = logging.getLogger(__name__)
 class CatalogUnavailable(AdapterError):
     """The shop's catalogue could not be read and single fetches are not safe."""
 
+
 CATALOG_PATH = "/products.json?limit=250"
 NEGATIVE_TTL_SECONDS = 3600  # settled: not a Shopify shop, stop probing
 RETRY_TTL_SECONDS = 120  # undecided: rate-limited or down, ask again soon
+MAX_RETRY_TTL_SECONDS = 1800
+
+# Consecutive failed probes per host. A fixed 120s retry was too eager: the one
+# thing /products.json needs is a quiet stretch (five minutes of silence turned
+# a solid 429 into a 200 on the live server), and asking every two minutes never
+# gave it one. Each failure doubles the wait until the endpoint answers again.
+_misses: dict[str, int] = {}
+
+
+def _retry_ttl(host: str) -> float:
+    return min(RETRY_TTL_SECONDS * (2 ** _misses.get(host, 0)), MAX_RETRY_TTL_SECONDS)
 
 
 @dataclass(frozen=True)
@@ -55,6 +67,7 @@ _locks: dict[str, asyncio.Lock] = {}
 def clear_cache() -> None:
     _cache.clear()
     _locks.clear()
+    _misses.clear()
 
 
 def reason(url_or_host: str) -> str | None:
@@ -173,9 +186,13 @@ async def catalog(url: str) -> dict[str, dict] | None:
 
         index, why, transient = await _load(base)
         if index is not None:
+            _misses.pop(host, None)
             ttl = get_settings().catalog_ttl_seconds
+        elif transient:
+            ttl = _retry_ttl(host)
+            _misses[host] = min(_misses.get(host, 0) + 1, 4)
         else:
-            ttl = RETRY_TTL_SECONDS if transient else NEGATIVE_TTL_SECONDS
+            ttl = NEGATIVE_TTL_SECONDS
         _cache[host] = _Entry(at=time.monotonic(), index=index, reason=why, ttl=ttl)
         return index
 

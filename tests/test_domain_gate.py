@@ -156,8 +156,10 @@ class TestBothFetchersUseTheGate:
 def _spy_gate(seen: list[str]):
     from contextlib import asynccontextmanager
 
+    from app.monitor.fetchers import PAGE_BUCKET
+
     @asynccontextmanager
-    async def gate(domain: str):
+    async def gate(domain: str, bucket: str = PAGE_BUCKET):
         seen.append(domain)
         yield
 

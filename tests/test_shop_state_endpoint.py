@@ -52,7 +52,7 @@ class TestEndpoint:
         fetchers.note_refusal("geeksheaven.de", 60.0)
         body = _client().get("/healthz/shops").json()
 
-        cooldown = body["shops"]["geeksheaven.de"]["cooldown"]
+        cooldown = body["shops"]["geeksheaven.de"]["cooldown"]["page"]
         assert 55 <= cooldown["remaining_seconds"] <= 60
         assert cooldown["consecutive_refusals"] == 1
 
@@ -91,7 +91,10 @@ class TestReportUsesTheAppState:
             {
                 "shop.de": {
                     "catalog": {"handles": [], "reason": "HTTP 429"},
-                    "cooldown": {"remaining_seconds": 240.0, "consecutive_refusals": 3},
+                    "cooldown": {
+                        "catalog": {"remaining_seconds": 240.0, "consecutive_refusals": 3},
+                        "page": {"remaining_seconds": 0, "consecutive_refusals": 0},
+                    },
                 }
             },
         )
