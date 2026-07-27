@@ -250,6 +250,21 @@ class TestReport:
         assert "geeksheaven.de/catalog" in text
         assert "1.5" in text
 
+    def test_always_mode_does_not_claim_the_proxy_is_idle(self, monkeypatch):
+        """Regression: "always" escalates nothing, so listing escalations alone
+        reported "nothing uses the proxy" while every request went through it."""
+        monkeypatch.setenv("PROXY_MODE", "always")
+        import app.config as config
+
+        config.get_settings.cache_clear()
+
+        from app.proxy_report import render
+
+        text = render({"proxy": proxy.report()})
+
+        assert "alle Shops laufen über den Proxy" in text
+        assert "Nichts läuft über den Proxy" not in text
+
     def test_it_says_so_when_no_proxy_is_configured(self, monkeypatch):
         monkeypatch.delenv("PROXY_URL", raising=False)
         import app.config as config

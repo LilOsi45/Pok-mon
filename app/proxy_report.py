@@ -42,12 +42,22 @@ def render(state: dict) -> str:
         "",
     ]
 
-    via = proxy.get("via_proxy") or []
-    if via:
-        out.append("Läuft über den Proxy (alles andere direkt und kostenlos):")
-        out.extend(f"  {entry}" for entry in via)
+    # In "always" mode nothing is ever *escalated*, so listing escalations alone
+    # would report "nothing uses the proxy" while every request goes through it.
+    if proxy.get("mode") == "always":
+        out.append("Modus: alle Shops laufen über den Proxy.")
+        if not today.get("requests"):
+            out.append(
+                "Noch keine Abrufe gezählt — entweder läuft der neue Build noch nicht\n"
+                "oder es war noch keine Prüfung fällig."
+            )
     else:
-        out.append("Nichts läuft über den Proxy — kein Shop hat uns abgewiesen.")
+        via = proxy.get("via_proxy") or []
+        if via:
+            out.append("Läuft über den Proxy (alles andere direkt und kostenlos):")
+            out.extend(f"  {entry}" for entry in via)
+        else:
+            out.append("Nichts läuft über den Proxy — kein Shop hat uns abgewiesen.")
     out.append("")
 
     per_shop = proxy.get("per_shop") or {}

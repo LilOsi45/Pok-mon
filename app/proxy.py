@@ -158,6 +158,7 @@ def report() -> dict:
     }
     return {
         "configured": configured(),
+        "mode": settings.proxy_mode,
         "today": {
             "requests": used.requests,
             "megabytes": round(used.bytes / 1_000_000, 2),
