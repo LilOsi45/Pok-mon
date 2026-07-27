@@ -83,6 +83,15 @@ async def run_sweep(kind: str, ids: list[int], runner: Callable[[int], Awaitable
 # ---------------------------------------------------------------------------
 
 
+def _proxy_status(raw: str | None) -> str:
+    """A configured-but-malformed proxy is worse than none — say so here."""
+    from app import proxy
+
+    if not raw:
+        return "—"
+    return "aktiv" if proxy.normalize_proxy_url(raw) else "FEHLERHAFT (wird ignoriert)"
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, next: str = "/watches", error: str = ""):
     return templates.TemplateResponse(
@@ -313,7 +322,9 @@ async def check_all_watches(
 
     ids = list((await session.scalars(select(Watch.id).where(Watch.enabled))).all())
     background.add_task(run_sweep, "watches", ids, check_watch_by_id)
-    return templates.TemplateResponse(request, "_watch_rows.html", {"watches": await _watch_rows(session)})
+    return templates.TemplateResponse(
+        request, "_watch_rows.html", {"watches": await _watch_rows(session)}
+    )
 
 
 @protected.get("/watches/{watch_id}/edit", response_class=HTMLResponse)
@@ -867,7 +878,7 @@ async def settings_page(
                 "News poll interval": f"{settings.news_poll_interval_seconds}s",
                 "Release-soon lead": f"{settings.release_soon_lead_days} days",
                 "Robots.txt": "respected" if settings.respect_robots_txt else "ignored",
-                "Proxy": "configured" if settings.proxy_url else "—",
+                "Proxy": _proxy_status(settings.proxy_url),
                 "Cardmarket API": "configured" if settings.cardmarket_app_token else "—",
                 "Stock checks recorded": f"{checks_count}",
             },

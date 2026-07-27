@@ -223,7 +223,7 @@ def _get_proxy_client() -> httpx.AsyncClient:
             headers={"User-Agent": settings.user_agent, **BASE_HEADERS},
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
-            proxy=settings.proxy_url,
+            proxy=proxy.url(),
             http2=False,
         )
     return _proxy_client
@@ -279,7 +279,7 @@ async def _one_get(url: str, extra_headers: dict[str, str] | None, via_proxy: bo
         return await browser_tls.fetch(
             url,
             extra_headers=extra_headers,
-            proxy=settings.proxy_url if via_proxy else None,
+            proxy=proxy.url() if via_proxy else None,
         )
     resp = await get_client(via_proxy).get(url, headers=extra_headers or {})
     json_data = None
@@ -555,7 +555,7 @@ async def fetch_playwright(
             user_agent=settings.user_agent,
             locale="de-DE",
             extra_http_headers=extra_headers or {},
-            proxy=_playwright_proxy(settings.proxy_url),
+            proxy=_playwright_proxy(proxy.url()),
         )
         start = time.monotonic()
         try:

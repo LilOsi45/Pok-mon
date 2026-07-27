@@ -274,3 +274,72 @@ class TestReport:
         from app.proxy_report import render
 
         assert "Kein Proxy" in render({"proxy": proxy.report()})
+
+
+class TestUrlNormalisation:
+    """Providers hand out `host:port:user:pass`, which is not a URL.
+
+    Rearranging those four fields by hand put a session token where the port
+    belongs. urlsplit then raised "Port could not be cast to integer" on every
+    single request, and the health report showed 41 of 43 watches failing with
+    errors — "all fetch attempts failed", "Katalog nicht erreichbar" — that
+    named the shops rather than the real cause.
+    """
+
+    def test_the_provider_format_is_understood(self):
+        assert (
+            proxy.normalize_proxy_url("geo.birdproxies.com:7777:kd12345:secret")
+            == "http://kd12345:secret@geo.birdproxies.com:7777"
+        )
+
+    def test_a_proper_url_is_left_alone(self):
+        url = "http://kd12345:secret@geo.birdproxies.com:7777"
+        assert proxy.normalize_proxy_url(url) == url
+
+    def test_the_scheme_is_kept(self):
+        assert proxy.normalize_proxy_url("https://u:p@host.de:8080") == "https://u:p@host.de:8080"
+
+    def test_credentials_without_a_scheme_work(self):
+        assert (
+            proxy.normalize_proxy_url("kd12345:secret@geo.birdproxies.com:7777")
+            == "http://kd12345:secret@geo.birdproxies.com:7777"
+        )
+
+    def test_the_field_order_does_not_matter(self):
+        """The regression: my conversion assumed one order and got another."""
+        expected = "http://kd12345:secret@geo.birdproxies.com:7777"
+        assert proxy.normalize_proxy_url("kd12345:secret:geo.birdproxies.com:7777") == expected
+        assert proxy.normalize_proxy_url("geo.birdproxies.com:7777:kd12345:secret") == expected
+
+    def test_host_and_port_only(self):
+        assert proxy.normalize_proxy_url("proxy.local:3128") == "http://proxy.local:3128"
+
+    def test_empty_means_no_proxy(self):
+        assert proxy.normalize_proxy_url(None) is None
+        assert proxy.normalize_proxy_url("   ") is None
+
+    def test_unparseable_disables_the_proxy_instead_of_breaking_every_fetch(self):
+        assert proxy.normalize_proxy_url("nonsense") is None
+        assert proxy.normalize_proxy_url("a:b:c") is None
+
+    def test_a_missing_port_is_refused(self):
+        assert proxy.normalize_proxy_url("host.de:user:pass:more") is None
+
+    def test_a_password_with_a_dot_is_not_mistaken_for_the_host(self):
+        """With an @ present the order is already unambiguous — never reorder."""
+        url = "http://kd12345:a.b.c@geo.birdproxies.com:7777"
+        assert proxy.normalize_proxy_url(url) == url
+
+    def test_a_password_with_a_colon_survives(self):
+        url = "http://kd12345:pa:ss@geo.birdproxies.com:7777"
+        assert proxy.normalize_proxy_url(url) == url
+
+    def test_an_at_form_without_a_numeric_port_is_refused(self):
+        assert proxy.normalize_proxy_url("u:p@host.de:session") is None
+
+    def test_configured_follows_the_normalised_value(self, monkeypatch):
+        monkeypatch.setenv("PROXY_URL", "nonsense")
+        import app.config as config
+
+        config.get_settings.cache_clear()
+        assert proxy.configured() is False

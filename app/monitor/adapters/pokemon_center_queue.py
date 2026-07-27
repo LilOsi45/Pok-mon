@@ -43,6 +43,7 @@ import time
 
 import httpx
 
+from app import proxy as app_proxy
 from app.config import get_settings
 from app.models import StockStatus
 from app.monitor.base import AdapterError, PageResult, RetailerAdapter, StockResult
@@ -105,7 +106,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
                 },
                 timeout=settings.request_timeout_seconds,
                 follow_redirects=False,  # the redirect IS the signal
-                proxy=settings.proxy_url,
+                proxy=app_proxy.url(),
             ) as client:
                 resp = await client.get(url)
         except httpx.HTTPError as exc:

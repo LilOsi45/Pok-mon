@@ -23,12 +23,32 @@ from app.seed import seed_watches
 log = logging.getLogger(__name__)
 
 
+def _check_proxy_setting(raw: str | None) -> None:
+    """Say at startup whether PROXY_URL is usable.
+
+    A malformed one broke every single fetch, and the failures surfaced as
+    "all fetch attempts failed" per shop — 41 of 43 watches red, with nothing
+    pointing at the proxy. One line at boot makes that obvious instead.
+    """
+    from app import proxy
+
+    if not raw:
+        log.info("no proxy configured — all requests go out from this machine")
+        return
+    resolved = proxy.normalize_proxy_url(raw)
+    if resolved is None:
+        log.error("PROXY_URL is malformed and was ignored — every shop is fetched directly")
+        return
+    log.info("proxy ready: %s", resolved.split("@")[-1])
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     setup_logging(settings.log_level, settings.log_format)
     if settings.dashboard_password == "change-me-please":
         log.warning("DASHBOARD_PASSWORD is still the default — set it in .env before exposing!")
+    _check_proxy_setting(settings.proxy_url)
     await asyncio.to_thread(run_migrations)
     async with get_sessionmaker()() as session:
         await seed_watches(session)

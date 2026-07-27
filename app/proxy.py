@@ -60,8 +60,64 @@ def reset() -> None:
     _state = _State()
 
 
+def normalize_proxy_url(raw: str | None) -> str | None:
+    """Accept whatever shape the provider hands out, or nothing at all.
+
+    Providers list credentials as `host:port:user:pass`, which is not a URL.
+    Rearranging those four fields by hand is easy to get wrong and fails in a
+    way that is hard to read: a misplaced field put a session token where the
+    port belongs, urlsplit raised "Port could not be cast to integer", and
+    *every* fetch failed — 41 of 43 watches in error with no obvious link to
+    the proxy.
+
+    So the field order is worked out here instead: the numeric field is the
+    port, the one with dots is the host, and the remaining two are user and
+    password in that order.
+    """
+    if not raw or not raw.strip():
+        return None
+    text = raw.strip()
+
+    scheme = "http"
+    if "://" in text:
+        scheme, _, text = text.partition("://")
+
+    # An "@" already says which half is which. Never reorder in that case — a
+    # password containing a dot would otherwise be mistaken for the host.
+    if "@" in text:
+        credentials, _, hostport = text.rpartition("@")
+        host, _, port = hostport.rpartition(":")
+        if not host or not port.isdigit():
+            log.error("PROXY_URL has no numeric port — proxy disabled")
+            return None
+        return f"{scheme}://{credentials}@{host}:{port}"
+
+    parts = [p for p in text.split(":") if p]
+    if len(parts) == 2 and parts[1].isdigit():  # host:port, no credentials
+        return f"{scheme}://{parts[0]}:{parts[1]}"
+    if len(parts) != 4:
+        log.error("PROXY_URL not understood (%d parts) — proxy disabled", len(parts))
+        return None
+
+    # Four bare fields, order unknown: providers print host:port:user:pass, but
+    # getting that wrong by hand is what put a session token where the port
+    # belongs and broke every request. Identify the fields instead of trusting
+    # a position.
+    port = next((p for p in parts if p.isdigit() and len(p) <= 5), None)
+    host = next((p for p in parts if "." in p and not p.isdigit()), None)
+    if port is None or host is None:
+        log.error("PROXY_URL has no recognisable host/port — proxy disabled")
+        return None
+    user, password = (p for p in parts if p not in (port, host))
+    return f"{scheme}://{user}:{password}@{host}:{port}"
+
+
+def url() -> str | None:
+    return normalize_proxy_url(get_settings().proxy_url)
+
+
 def configured() -> bool:
-    return bool(get_settings().proxy_url)
+    return bool(url())
 
 
 def _always(domain: str) -> bool:

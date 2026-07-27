@@ -22,6 +22,7 @@ import sys
 
 import httpx
 
+from app import proxy as app_proxy
 from app.config import get_settings
 from app.monitor.fetchers import BASE_HEADERS
 
@@ -83,7 +84,7 @@ async def _try_curl(url: str) -> None:
 
 async def probe(url: str) -> None:
     settings = get_settings()
-    proxy = settings.proxy_url
+    proxy = app_proxy.url()
     print(f"URL:   {url}")
     print(f"Proxy: {'ja — ' + proxy.split('@')[-1] if proxy else 'nein'}")
     print()
