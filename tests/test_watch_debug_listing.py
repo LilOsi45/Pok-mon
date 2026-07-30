@@ -11,7 +11,6 @@ import pytest
 
 from app.models import Game, Watch
 
-
 # As long as the real thing: the reason must survive to the end of the line.
 LONG_REASON = (
     "brightdata returned an empty body for https://www.pokemoncenter.com/de-de "
