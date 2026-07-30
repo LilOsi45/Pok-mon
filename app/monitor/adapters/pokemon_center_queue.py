@@ -25,14 +25,17 @@ Detection signals, strongest first:
 
 Choosing a fetcher (detection config)
 -------------------------------------
-Measured against pokemoncenter.com, not guessed:
+Re-measured against pokemoncenter.com/de-de after the browser handshake and
+residential proxies were added — the earlier reading no longer holds:
 
-    (default)                  plain httpx  -> permanent HTTP 403 challenge
-    {"fetcher": "playwright"}  real browser -> permanent HTTP 403 challenge
+    (default), server IP       plain httpx  -> HTTP 200
+    (default), via proxy       plain httpx  -> HTTP 403 (CloudFront)
     {"fetcher": "brightdata"}  unlocker     -> HTTP 200, full page
 
-Only the unlocker reaches the site, so it is the only setting that can observe
-a queue at all. It costs money per request, so keep the interval sane.
+So the default is now the right choice: it is free, and only it can see the
+Queue-it *redirect*, which the unlocker swallows by following redirects itself.
+The proxy must stay out of the way here; unlike the shops, this site blocks the
+proxy and answers our own address.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -84,18 +88,24 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
         if fetcher == "playwright":
             return await fetchers.fetch_playwright(url)
         if fetcher == "brightdata":
-            # The unlocker is the only client that actually reaches this site:
-            # plain httpx and a real headless browser both get the permanent
-            # 403 challenge wall. It gets past the *bot check* — but Queue-it is
-            # a server-side waiting room, not a bot check, so a live queue is
-            # served to the unlocker too. We therefore match on the body
-            # phrases; the redirect itself is invisible here because the
-            # unlocker follows redirects and reports only the requested URL.
+            # Paid fallback for when the site stops answering us directly. It
+            # gets past a bot check, and Queue-it is a server-side waiting room
+            # rather than a bot check, so a live queue should be served to it
+            # too — but only the body phrases can show that, because the
+            # unlocker follows the redirect itself and reports the requested URL.
             return await fetchers.fetch_scraperapi(url)
-        # Direct fetch (via PROXY_URL), NOT following redirects, so a Queue-it
-        # redirect is visible as a 3xx + Location. Only useful while the site
-        # answers us at all — see the module docstring.
+        # Direct fetch, NOT following redirects, so a Queue-it redirect is
+        # visible as a 3xx + Location — the strongest signal there is, and the
+        # one the unlocker hides by following redirects itself.
+        #
+        # The proxy is only used if the shared routing policy asks for it. This
+        # used to pass PROXY_URL unconditionally, which was exactly wrong here:
+        # measured against pokemoncenter.com/de-de, the server's own IP gets
+        # 200 while the residential proxy gets 403 from CloudFront. The watch
+        # would have been blocked on every single check.
         settings = get_settings()
+        domain = urlsplit(url).netloc.lower().removeprefix("www.")
+        via_proxy = app_proxy.routes_via_proxy(domain, "page")
         await asyncio.sleep(random.uniform(0.2, 1.5))
         start = time.monotonic()
         try:
@@ -106,7 +116,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
                 },
                 timeout=settings.request_timeout_seconds,
                 follow_redirects=False,  # the redirect IS the signal
-                proxy=app_proxy.url(),
+                proxy=app_proxy.url() if via_proxy else None,
             ) as client:
                 resp = await client.get(url)
         except httpx.HTTPError as exc:

@@ -208,3 +208,51 @@ def test_unlocker_sees_the_waiting_room_through_the_body():
     )
     assert result.status == StockStatus.IN_STOCK
     assert result.alert_title and "OFFEN" in result.alert_title
+
+
+class TestTheProxyStaysOutOfTheWay:
+    """Measured: the server's own IP gets 200, the residential proxy gets 403.
+
+    The adapter passed PROXY_URL unconditionally, so once a proxy was configured
+    the queue watch would have been answered 403 (CloudFront) on every check —
+    permanently blind to the queue it exists to catch. Unlike the shops, this
+    site blocks the proxy and answers us directly.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_proxy_is_used_when_the_policy_says_direct(self, monkeypatch):
+        import httpx
+
+        from app import proxy as app_proxy
+        from app.monitor.adapters.pokemon_center_queue import PokemonCenterQueueAdapter
+
+        monkeypatch.setenv("PROXY_URL", "http://u:p@residential.example:7777")
+        monkeypatch.setenv("PROXY_MODE", "on-refusal")
+        import app.config as config
+
+        config.get_settings.cache_clear()
+        app_proxy.reset()
+
+        used: list[str | None] = []
+        real_client = httpx.AsyncClient
+
+        class Recording(real_client):
+            def __init__(self, *a, **kw):
+                used.append(kw.get("proxy"))
+                super().__init__(*a, **kw)
+
+            async def get(self, url, **kw):
+                return httpx.Response(200, text="ok", request=httpx.Request("GET", url))
+
+        monkeypatch.setattr(httpx, "AsyncClient", Recording)
+        monkeypatch.setattr("app.monitor.adapters.pokemon_center_queue.asyncio.sleep", _noop)
+
+        await PokemonCenterQueueAdapter().fetch("https://www.pokemoncenter.com/de-de")
+
+        assert used == [None], "the queue watch went through the proxy that 403s it"
+        config.get_settings.cache_clear()
+        app_proxy.reset()
+
+
+async def _noop(_seconds):
+    return None
