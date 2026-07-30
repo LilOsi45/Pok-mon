@@ -82,6 +82,24 @@ async def _try_curl(url: str) -> None:
         print(f"{'curl (anderes Programm)':34} nicht installiert")
 
 
+async def _try_browser(url: str, proxy: str | None, label: str) -> None:
+    """The route the app now uses: a real Chrome TLS handshake, optionally proxied."""
+    from app.monitor import browser_tls
+
+    if not browser_tls.available():
+        print(f"{label:34} curl_cffi nicht installiert")
+        return
+    try:
+        page = await browser_tls.fetch(url, proxy=proxy)
+    except Exception as exc:
+        print(f"{label:34} FEHLER  {type(exc).__name__}: {str(exc)[:60]}")
+        return
+    note = ""
+    if server := (page.headers or {}).get("server"):
+        note = f"  server={server}"
+    print(f"{label:34} {page.status_code}  {len(page.text):>8} B{note}")
+
+
 async def probe(url: str) -> None:
     settings = get_settings()
     proxy = app_proxy.url()
@@ -103,6 +121,15 @@ async def probe(url: str) -> None:
         if index:
             await asyncio.sleep(GAP_SECONDS)
         await _try(label, url, headers=headers, proxy=via)
+
+    # The paths the app actually uses now. Pokémon Center was measured as
+    # unreachable except through the paid unlocker — but that was before the
+    # browser handshake and before residential proxies existed here, so the
+    # measurement is stale and a queue alarm on the unlocker costs real money.
+    await asyncio.sleep(GAP_SECONDS)
+    await _try_browser(url, None, "Browser-Handschlag, direkt")
+    await asyncio.sleep(GAP_SECONDS)
+    await _try_browser(url, proxy, "Browser-Handschlag über Proxy")
 
     # Same URL, same machine, same seconds — only the program differs.
     await asyncio.sleep(GAP_SECONDS)
