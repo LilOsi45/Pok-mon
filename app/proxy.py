@@ -18,6 +18,7 @@ shop starts refusing everything.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -41,6 +42,10 @@ class Usage:
 @dataclass
 class _State:
     day: date = field(default_factory=date.today)
+    # When the current day's measurement began. A projection that multiplies a
+    # partial day by 30 reads far too low — half an hour of data claimed
+    # 1.50 $/month for what was really heading past the whole allowance.
+    started: float = field(default_factory=time.monotonic)
     usage: dict[Key, Usage] = field(default_factory=dict)
     escalated: set[Key] = field(default_factory=set)
     refusals: dict[Key, int] = field(default_factory=dict)
@@ -49,6 +54,7 @@ class _State:
         today = date.today()
         if today != self.day:
             self.day = today
+            self.started = time.monotonic()
             self.usage.clear()
 
 
@@ -215,13 +221,21 @@ def report() -> dict:
         f"{domain}/{bucket}": {"requests": u.requests, "megabytes": round(u.bytes / 1_000_000, 2)}
         for (domain, bucket), u in sorted(_state.usage.items())
     }
+    hours = max((time.monotonic() - _state.started) / 3600, 1 / 60)
+    gb_per_month = (used.bytes / 1_000_000_000) / hours * 24 * 30
     return {
         "configured": configured(),
         "mode": settings.proxy_mode,
+        "measured_minutes": round(hours * 60, 1),
         "today": {
             "requests": used.requests,
             "megabytes": round(used.bytes / 1_000_000, 2),
             "estimated_cost": round(used.bytes / 1_000_000_000 * settings.proxy_cost_per_gb, 2),
+        },
+        # Projected from the observed rate, not from a partial day multiplied by 30.
+        "projection": {
+            "gigabytes_per_month": round(gb_per_month, 2),
+            "cost_per_month": round(gb_per_month * settings.proxy_cost_per_gb, 2),
         },
         "budget": {
             "requests_left": budget_left()[0],

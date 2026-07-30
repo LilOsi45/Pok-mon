@@ -33,14 +33,22 @@ def render(state: dict) -> str:
 
     today = proxy.get("today", {})
     budget = proxy.get("budget", {})
+    projection = proxy.get("projection", {})
+    minutes = proxy.get("measured_minutes", 0)
+    gb = projection.get("gigabytes_per_month", 0)
     out = [
-        f"Heute über den Proxy: {today.get('requests', 0)} Abrufe, {today.get('megabytes', 0)} MB",
-        f"Geschätzte Kosten heute: {today.get('estimated_cost', 0):.2f} $ "
-        f"(hochgerechnet {today.get('estimated_cost', 0) * 30:.2f} $/Monat)",
+        f"Über den Proxy: {today.get('requests', 0)} Abrufe, {today.get('megabytes', 0)} MB"
+        f"  (gemessen über {minutes:.0f} Minuten)",
+        # Projected from the observed rate. Multiplying a partial day by 30 read
+        # far too low: half an hour of data claimed 1.50 $/month for traffic
+        # that was really heading past a 10 GB allowance.
+        f"Hochgerechnet: {gb:.1f} GB/Monat = {projection.get('cost_per_month', 0):.2f} $/Monat",
         f"Rest heute: {budget.get('requests_left', 0)} Abrufe, "
         f"{budget.get('megabytes_left', 0)} MB",
         "",
     ]
+    if minutes < 15:
+        out.insert(2, "  (noch wenig Messzeit — die Hochrechnung wird erst nach ~1 h belastbar)")
 
     # In "always" mode nothing is ever *escalated*, so listing escalations alone
     # would report "nothing uses the proxy" while every request goes through it.

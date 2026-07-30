@@ -276,6 +276,48 @@ class TestReport:
         assert "Kein Proxy" in render({"proxy": proxy.report()})
 
 
+class TestProjection:
+    """Multiplying a partial day by 30 is not a forecast.
+
+    Half an hour of measurement reported "1.50 $/month" for traffic that was
+    actually running at roughly 15 GB a month — well past a 10 GB allowance.
+    The rate has to be projected from the time actually measured.
+    """
+
+    def test_it_projects_from_the_observed_rate(self):
+        import time
+
+        proxy._state.started = time.monotonic() - 3600  # one hour of data
+        proxy.note_success(SHOP, PAGE_BUCKET, 20_000_000, was_proxied=True)
+
+        # 20 MB/h -> 480 MB/day -> ~14.4 GB/month
+        assert proxy.report()["projection"]["gigabytes_per_month"] == pytest.approx(14.4, abs=0.2)
+
+    def test_a_partial_day_is_not_multiplied_by_thirty(self):
+        import time
+
+        proxy._state.started = time.monotonic() - 1800  # half an hour
+        proxy.note_success(SHOP, PAGE_BUCKET, 10_650_000, was_proxied=True)
+
+        gb = proxy.report()["projection"]["gigabytes_per_month"]
+        assert gb > 10, f"projected only {gb} GB — the old maths said 0.3"
+
+    def test_the_measured_window_is_reported(self):
+        import time
+
+        proxy._state.started = time.monotonic() - 600
+        assert proxy.report()["measured_minutes"] == pytest.approx(10, abs=0.5)
+
+    def test_a_fresh_start_does_not_divide_by_zero(self):
+        assert proxy.report()["projection"]["gigabytes_per_month"] == 0
+
+    def test_the_report_warns_while_the_window_is_short(self):
+        from app.proxy_report import render
+
+        text = render({"proxy": proxy.report()})
+        assert "wenig Messzeit" in text
+
+
 class TestUrlNormalisation:
     """Providers hand out `host:port:user:pass`, which is not a URL.
 
