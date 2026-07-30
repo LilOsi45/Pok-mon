@@ -22,8 +22,11 @@
       <input id="s-url" name="url" type="url" required placeholder="https://shop.de/pokemon/neuheiten" value="{{ scan.url if scan else '' }}">
     </div>
     <div>
-      <label for="s-keywords">Schlagwörter (Komma = UND)</label>
-      <input id="s-keywords" name="keywords" required placeholder="pokemon, display" value="{{ scan.keywords|join(', ') if scan else '' }}">
+      {# Not required: forcing a keyword on a "new arrivals" page led to a
+         single letter "p" being entered, which silently dropped every product
+         without a p in its name. Empty is the correct setting there. #}
+      <label for="s-keywords">Schlagwörter (Komma = UND) — leer = alles Neue</label>
+      <input id="s-keywords" name="keywords" placeholder="leer lassen für alles" value="{{ scan.keywords|join(', ') if scan else '' }}">
     </div>
     <div>
       <label for="s-exclude">Ausschließen (optional)</label>

@@ -85,3 +85,32 @@ class TestProductLinksWin:
 
     def test_an_empty_page_yields_nothing(self):
         assert parse_listing("<html><body></body></html>", PC) == []
+
+
+class TestEmptyKeywordsAreAllowed:
+    """Forcing a keyword is what produced the filter "p".
+
+    On a new-arrivals page every new product is the signal, so an empty filter
+    is the correct setting. The form demanded one anyway, a single letter was
+    entered to satisfy it, and every product without a "p" in its name was
+    silently discarded — 12 of 47 on the page that mattered.
+    """
+
+    def test_no_keywords_matches_everything(self):
+        from app.scanner import keywords_match
+
+        assert keywords_match("Pokémon Top-Trainer-Box", []) is True
+        assert keywords_match("Irgendwas ganz anderes", []) is True
+
+    def test_the_form_does_not_demand_one(self):
+        from pathlib import Path
+
+        form = Path("app/web/templates/_scan_form.html").read_text(encoding="utf-8")
+        keyword_line = next(line for line in form.splitlines() if 'name="keywords"' in line)
+        assert "required" not in keyword_line
+
+    def test_excludes_still_apply_without_keywords(self):
+        from app.scanner import keywords_match
+
+        assert keywords_match("Pokémon Sleeves", [], ["sleeves"]) is False
+        assert keywords_match("Pokémon Display", [], ["sleeves"]) is True

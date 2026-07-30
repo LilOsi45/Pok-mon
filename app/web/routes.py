@@ -569,7 +569,8 @@ async def create_scan(
     game: str = Form(...),
     label: str = Form(...),
     url: str = Form(...),
-    keywords: str = Form(...),
+    # Empty is valid: on a "new arrivals" page every new product is the point.
+    keywords: str = Form(""),
     exclude_keywords: str = Form(""),
     interval_seconds: int = Form(900),
     channels: list[str] = Form([]),
@@ -630,7 +631,8 @@ async def update_scan(
     game: str = Form(...),
     label: str = Form(...),
     url: str = Form(...),
-    keywords: str = Form(...),
+    # Empty is valid: on a "new arrivals" page every new product is the point.
+    keywords: str = Form(""),
     exclude_keywords: str = Form(""),
     interval_seconds: int = Form(900),
     channels: list[str] = Form([]),
