@@ -37,6 +37,29 @@ def _queue_signals(page: PageResult) -> list[str]:
     return hits
 
 
+def _verdict(adapter, page: PageResult) -> None:
+    """What the adapter concludes — the line that actually decides pings.
+
+    Showing only the raw fetch was misleading: a Pokémon Center check reported
+    "HTTP 200, Warteschlange: keine Anzeichen", which reads like a healthy quiet
+    store. The adapter's own verdict was "only a bot interstitial, blind to the
+    queue". Without it the operator sees reassurance instead of the problem.
+    """
+    try:
+        result = adapter.parse(page)
+    except Exception as exc:
+        print(f"    Urteil        : Parser-Fehler {type(exc).__name__}: {exc}\n")
+        return
+    print(f"    URTEIL        : {result.status.value}")
+    if result.alert_title:
+        print(f"    Alarm         : {result.alert_title}")
+    if result.note:
+        print(f"    Begründung    : {result.note}")
+    if result.price is not None:
+        print(f"    Preis         : {result.price} {result.currency or ''}")
+    print()
+
+
 def _report(name: str, page: PageResult | None, error: str | None) -> None:
     print(f"--- {name}")
     if page is None:
@@ -85,6 +108,7 @@ async def debug_watch(watch_id: int) -> None:
     try:
         page = await adapter.fetch(url)
         _report(f"So prüft der Tracker gerade ({page.fetched_via})", page, None)
+        _verdict(adapter, page)
     except Exception as exc:
         _report("So prüft der Tracker gerade", None, f"{type(exc).__name__}: {exc}")
 
