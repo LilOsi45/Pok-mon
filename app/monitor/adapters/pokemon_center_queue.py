@@ -69,6 +69,25 @@ QUEUE_PAGE_PHRASES = (
 
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
+# The real store page is ~550 KB. The bot interstitial is about a kilobyte of
+# obfuscated JavaScript, served with HTTP 200 and a noindex meta — measured on
+# the live server, direct fetch: 1055 characters.
+INTERSTITIAL_MAX_CHARS = 8000
+STORE_MARKERS = ("/de-de/product", "/en-us/product", "pokémon-sammelkartenspiel", "add to cart")
+
+
+def _is_interstitial(page: PageResult) -> bool:
+    """True when we got a challenge/holding page instead of the store.
+
+    Judged on the body, not the status code: the challenge comes back as 200.
+    """
+    body = page.text or ""
+    if len(body) > INTERSTITIAL_MAX_CHARS:
+        return False
+    lowered = body.lower()
+    return not any(marker in lowered for marker in STORE_MARKERS)
+
+
 # How the edge answers us at rest: the normal store (200) or — far more often —
 # the permanent JS challenge Pokémon Center serves to datacenter IPs (403).
 # Anything else means the wall moved. 404 is excluded on purpose: that is a
@@ -161,10 +180,26 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
             label = "Rate-Limit" if status == 429 else "Anti-Bot hoch"
             return self._signal(f"⚠️ PC-Aktivität — {label} (Drop?)", f"HTTP {status}")
 
-        # 3. Steady state: standard JS challenge (403) or the normal store (200)
-        #    — idle baseline, no alert (we ping on *changes* away from this).
+        # 3. Are we even looking at the store? A bot interstitial is served with
+        #    HTTP 200 and about a kilobyte of obfuscated JavaScript, while the
+        #    real page is well over half a megabyte. Reading only the status code
+        #    made that look like "store normal, no queue" — a watch that can
+        #    never see a queue reported as healthy, which is the worst possible
+        #    answer for an alarm.
+        if _is_interstitial(page):
+            return StockResult(
+                status=StockStatus.UNKNOWN,
+                title="Pokémon Center",
+                note=(
+                    f"nur Bot-Prüfseite ({len(page.text)} Zeichen, HTTP {status}) — "
+                    'blind für die Queue, Detection auf {"fetcher": "brightdata"} setzen'
+                ),
+            )
+
+        # 4. Steady state: the real store, no queue — idle baseline, no alert
+        #    (we ping on *changes* away from this).
         return StockResult(
             status=StockStatus.OUT_OF_STOCK,
             title="Pokémon Center",
-            note=f"idle (HTTP {status})",
+            note=f"idle (HTTP {status}, {len(page.text)} Zeichen)",
         )

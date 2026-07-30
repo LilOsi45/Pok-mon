@@ -17,7 +17,9 @@ URL = "https://www.pokemoncenter.com/de-de"
 
 def page(
     status: int = 200,
-    text: str = "<html><body>Welcome to the Pokémon Center!</body></html>",
+    # A store marker is what tells the real page apart from the ~1 KB bot
+    # interstitial that also comes back as HTTP 200.
+    text: str = '<html><body>Welcome!<a href="/de-de/product/box">Box</a></body></html>',
     location: str | None = None,
     final_url: str = URL,
 ) -> PageResult:
@@ -54,16 +56,24 @@ class TestDetection:
         assert result.status == StockStatus.OUT_OF_STOCK
 
     def test_generic_queueit_script_tag_does_not_trigger(self):
-        html = '<html><head><script src="https://pokemoncenter.queue-it.net/queue-client.js"></script></head><body>Shop</body></html>'
+        html = (
+            '<html><head><script src="https://pokemoncenter.queue-it.net/queue-client.js">'
+            '</script></head><body>Shop<a href="/de-de/product/box">Box</a></body></html>'
+        )
         # script tag is in body text but host marker only counts for redirects/final URL
         result = PokemonCenterQueueAdapter().parse(page(text=html))
         assert result.status == StockStatus.OUT_OF_STOCK
 
-    def test_challenge_403_is_idle_baseline(self):
-        # PC serves a permanent JS challenge (403) at rest → idle, no alert
+    def test_a_challenge_403_is_blind_not_idle(self):
+        """Corrected: a challenge means we cannot see the store, so not "no queue".
+
+        Reporting the challenge as idle made a watch that can never observe a
+        queue look healthy. It is UNKNOWN — the alert on 429/5xx still fires,
+        because that check runs first.
+        """
         result = PokemonCenterQueueAdapter().parse(page(status=403, text="cmsg challenge"))
-        assert result.status == StockStatus.OUT_OF_STOCK
-        assert "idle" in result.note
+        assert result.status == StockStatus.UNKNOWN
+        assert "Bot-Prüfseite" in result.note
 
     def test_503_overload_signals_activity(self):
         # the wall going up during a drop shows as an overload → alert
@@ -84,11 +94,10 @@ class TestDetection:
         assert result.status == StockStatus.IN_STOCK
         assert result.alert_title and "Anti-Bot" in result.alert_title
 
-    def test_404_is_idle_not_an_alert(self):
-        # a wrong watch URL must not masquerade as drop activity
+    def test_404_is_never_an_alert(self):
+        """A wrong watch URL must not masquerade as drop activity."""
         result = PokemonCenterQueueAdapter().parse(page(status=404, text="not found"))
-        assert result.status == StockStatus.OUT_OF_STOCK
-        assert "idle" in result.note
+        assert result.status is not StockStatus.IN_STOCK
 
     def test_not_domain_resolved_but_slug_selectable(self):
         # plain pokemoncenter.com watches keep the product stub…
@@ -204,7 +213,9 @@ class TestFetcherChoice:
 def test_unlocker_sees_the_waiting_room_through_the_body():
     """Via the unlocker there is no redirect to inspect — the body must carry it."""
     result = PokemonCenterQueueAdapter({"fetcher": "brightdata"}).parse(
-        page(status=200, text="<html><body>You are now in line. Estimated wait 12 min</body></html>")
+        page(
+            status=200, text="<html><body>You are now in line. Estimated wait 12 min</body></html>"
+        )
     )
     assert result.status == StockStatus.IN_STOCK
     assert result.alert_title and "OFFEN" in result.alert_title
@@ -256,3 +267,59 @@ class TestTheProxyStaysOutOfTheWay:
 
 async def _noop(_seconds):
     return None
+
+
+class TestInterstitialIsNotHealth:
+    """A challenge page arrives as HTTP 200 with about a kilobyte of JavaScript.
+
+    Measured on the live server: the direct fetch of /de-de returned 200 with
+    1055 characters beginning '<html style="height:100%"><head><META
+    NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">', while the real page is 547737
+    characters. Judging by status code alone reported that as "store normal, no
+    queue" — a watch permanently unable to see a queue, presented as healthy.
+    """
+
+    CHALLENGE = (
+        '<html style="height:100%"><head><META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">'
+        '<script src="/vice-come-Soldenyson" async=""></script>'
+        "<style>#cmsg{animation: A 1.5s;}</style></head><body></body></html>"
+    )
+
+    def _page(self, text: str, status: int = 200) -> PageResult:
+        return PageResult(
+            url="https://www.pokemoncenter.com/de-de",
+            final_url="https://www.pokemoncenter.com/de-de",
+            status_code=status,
+            text=text,
+            headers={},
+        )
+
+    def test_a_challenge_page_is_unknown_not_idle(self):
+        result = PokemonCenterQueueAdapter().parse(self._page(self.CHALLENGE))
+
+        assert result.status is StockStatus.UNKNOWN
+        assert "Bot-Prüfseite" in (result.note or "")
+
+    def test_the_note_says_how_to_fix_it(self):
+        result = PokemonCenterQueueAdapter().parse(self._page(self.CHALLENGE))
+        assert "brightdata" in (result.note or "")
+
+    def test_the_real_store_page_is_idle(self):
+        real = "<html>" + ("x" * 60000) + '<a href="/de-de/product/box">Box</a></html>'
+        result = PokemonCenterQueueAdapter().parse(self._page(real))
+
+        assert result.status is StockStatus.OUT_OF_STOCK
+        assert "idle" in (result.note or "")
+
+    def test_a_small_page_that_shows_products_is_still_the_store(self):
+        small_but_real = '<html><a href="/de-de/product/box">Eine Box</a></html>'
+        result = PokemonCenterQueueAdapter().parse(self._page(small_but_real))
+        assert result.status is StockStatus.OUT_OF_STOCK
+
+    def test_a_queue_page_still_wins_over_the_size_check(self):
+        """A Queue-it holding page is small too — it must never read as blind."""
+        queue = "<html><body>Du bist jetzt in der Warteschlange</body></html>"
+        result = PokemonCenterQueueAdapter().parse(self._page(queue))
+
+        assert result.status is StockStatus.IN_STOCK
+        assert "Queue" in (result.alert_title or "")
