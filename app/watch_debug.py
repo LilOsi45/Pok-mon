@@ -93,29 +93,59 @@ async def debug_watch(watch_id: int) -> None:
             page = await fetchers.fetch_playwright(url)
             _report("Zum Vergleich: echter Browser (Playwright)", page, None)
         except Exception as exc:
-            _report("Zum Vergleich: echter Browser (Playwright)", None, f"{type(exc).__name__}: {exc}")
+            _report(
+                "Zum Vergleich: echter Browser (Playwright)", None, f"{type(exc).__name__}: {exc}"
+            )
         print(
-            'Wenn der Browser eine deutlich größere Seite oder HTTP 200 liefert, sieht er\n'
+            "Wenn der Browser eine deutlich größere Seite oder HTTP 200 liefert, sieht er\n"
             "mehr als der einfache Abruf. Dann lohnt sich in der Watch unter Detection:\n"
             '    {"fetcher": "playwright"}'
         )
 
 
-async def _run(watch_id: int) -> None:
+async def list_watches(needle: str | None = None) -> None:
+    """Print id + label for every watch, optionally filtered.
+
+    Without this the tool needed an id the operator had to look up first, and a
+    placeholder like <ID> or NEUE_ID in an instruction gets pasted literally —
+    it happened twice.
+    """
+    from sqlalchemy import select
+
+    async with get_sessionmaker()() as session:
+        watches = list((await session.scalars(select(Watch).order_by(Watch.id))).all())
+    if needle:
+        lowered = needle.lower()
+        watches = [w for w in watches if lowered in w.label.lower() or lowered in w.url.lower()]
+    if not watches:
+        print("Keine passende Watch gefunden." if needle else "Es gibt noch keine Watches.")
+        return
+    print(f"{'ID':>4}  {'Label':32}  Adapter")
+    for w in watches:
+        state = "" if w.enabled else "  (aus)"
+        print(f"{w.id:>4}  {w.label[:32]:32}  {w.adapter or '(automatisch)'}{state}")
+    print()
+    print("Prüfen mit:  python -m app.watch_debug <ID>")
+
+
+async def _run(target: int | str | None) -> None:
     from app.monitor.fetchers import close_client, shutdown_playwright
 
     try:
-        await debug_watch(watch_id)
+        if isinstance(target, int):
+            await debug_watch(target)
+        else:
+            await list_watches(target)
     finally:
         await shutdown_playwright()
         await close_client()
 
 
 def main() -> None:
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        print("Aufruf: python -m app.watch_debug <watch-id>")
-        raise SystemExit(2)
-    asyncio.run(_run(int(sys.argv[1])))
+    """No argument lists the watches; a number debugs one; text searches."""
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    target: int | str | None = int(arg) if arg and arg.isdigit() else arg
+    asyncio.run(_run(target))
 
 
 if __name__ == "__main__":
