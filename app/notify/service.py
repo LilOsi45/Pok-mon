@@ -92,7 +92,33 @@ async def dispatch_event(session: AsyncSession, event: Event) -> list[Notificati
     notifiers = await load_notifiers(session)
     matching = [n for n in notifiers if n.matches(event)]
     if not matching:
-        log.info("event %s (%s) matched no notifiers", event.type.value, event.title)
+        # A misrouted event used to vanish: logged at INFO (invisible at the
+        # configured level) and never recorded, so the notification history
+        # looked like "nothing happened". A daily heartbeat warning about a
+        # broken Pokémon Center scanner disappeared that way for days, and the
+        # drop it was meant to catch was missed. Make it loud and persistent.
+        log.error(
+            "event %s (%s) matched NO notifier — routes %s reach nobody",
+            event.type.value,
+            event.title,
+            event.routes,
+        )
+        session.add(
+            Notification(
+                event_type=event.type,
+                notifier="(kein Kanal)",
+                notifier_type="none",
+                title=event.title,
+                body=event.message or None,
+                url=event.url,
+                watch_id=event.watch_id,
+                news_id=event.news_id,
+                success=False,
+                error=f"kein Notifier passt zu {event.routes} — in config.yaml eintragen",
+            )
+        )
+        await session.commit()
+        return []
 
     # Quiet hours: suppress non-priority noise (still recorded in history).
     # Priority events, tests and the daily heartbeat always go through.

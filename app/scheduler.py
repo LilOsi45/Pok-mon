@@ -195,6 +195,20 @@ def schedule_news_jobs() -> None:
             name="daily heartbeat",
         )
 
+    # A daily heartbeat was the only thing reporting a broken watch, and a
+    # Pokémon Center scanner stayed dead long enough to nearly cost a drop.
+    # Check every 30 minutes instead; the watchdog has its own grace period and
+    # repeat cooldown, so this cadence does not become noise.
+    from app.watchdog import run_watchdog
+
+    scheduler.add_job(
+        run_watchdog,
+        IntervalTrigger(minutes=30, jitter=120),
+        id="system:watchdog",
+        replace_existing=True,
+        name="broken watch/scanner alarm",
+    )
+
     # Trim the check/notification history nightly — it grows by tens of
     # thousands of rows a day and nothing else ever deletes from it.
     from app.retention import prune_job
