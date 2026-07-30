@@ -300,9 +300,10 @@ class TestInterstitialIsNotHealth:
         assert result.status is StockStatus.UNKNOWN
         assert "Bot-Prüfseite" in (result.note or "")
 
-    def test_the_note_says_how_to_fix_it(self):
-        result = PokemonCenterQueueAdapter().parse(self._page(self.CHALLENGE))
-        assert "brightdata" in (result.note or "")
+    def test_the_note_names_the_field_in_the_dashboard(self):
+        """It used to quote JSON for a column with no input field — unusable."""
+        note = PokemonCenterQueueAdapter().parse(self._page(self.CHALLENGE)).note or ""
+        assert "Abruf-Methode" in note and "Unlocker" in note
 
     def test_the_real_store_page_is_idle(self):
         real = "<html>" + ("x" * 60000) + '<a href="/de-de/product/box">Box</a></html>'

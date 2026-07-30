@@ -44,7 +44,10 @@ class TestCollect:
 
     def test_same_shop_is_grouped_and_intervals_summed(self):
         loads = collect(
-            [watch("https://www.pokemoncenter.com/a", 120), watch("https://www.pokemoncenter.com/b", 600)],
+            [
+                watch("https://www.pokemoncenter.com/a", 120),
+                watch("https://www.pokemoncenter.com/b", 600),
+            ],
             [],
         )
         assert len(loads) == 1
@@ -66,9 +69,7 @@ class TestCollect:
 class TestRender:
     def test_marks_free_and_paid_rows(self):
         out = render(
-            collect(
-                [watch("https://cardsrfun.de/a"), watch("https://www.pokemoncenter.com/b")], []
-            )
+            collect([watch("https://cardsrfun.de/a"), watch("https://www.pokemoncenter.com/b")], [])
         )
         assert "gratis" in out
         assert "$/Monat" in out

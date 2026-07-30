@@ -58,11 +58,15 @@ def _cardmarket_value(event: Event) -> str | None:
         lines.append(f"{label}**{event.cardmarket_trend:.2f} €**")
     if event.cardmarket_low is not None:
         lines.append(f"ab {event.cardmarket_low:.2f} €")
-    reference = event.cardmarket_trend if event.cardmarket_trend is not None else event.cardmarket_low
+    reference = (
+        event.cardmarket_trend if event.cardmarket_trend is not None else event.cardmarket_low
+    )
     if event.price is not None and reference is not None:
         delta = reference - event.price
         if abs(delta) >= 0.5:  # ignore cent-level noise
-            lines.append(f"🟢 {delta:.2f} € günstiger" if delta > 0 else f"🔴 {-delta:.2f} € teurer")
+            lines.append(
+                f"🟢 {delta:.2f} € günstiger" if delta > 0 else f"🔴 {-delta:.2f} € teurer"
+            )
     return "\n".join(lines)
 
 

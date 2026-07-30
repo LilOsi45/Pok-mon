@@ -42,9 +42,7 @@ async def prune_old_rows(session: AsyncSession) -> PruneResult:
     checks_cutoff = now - timedelta(days=settings.check_retention_days)
     notes_cutoff = now - timedelta(days=settings.notification_retention_days)
 
-    checks = await session.execute(
-        delete(StockCheck).where(StockCheck.checked_at < checks_cutoff)
-    )
+    checks = await session.execute(delete(StockCheck).where(StockCheck.checked_at < checks_cutoff))
     notes = await session.execute(
         delete(Notification).where(Notification.created_at < notes_cutoff)
     )

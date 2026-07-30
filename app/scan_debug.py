@@ -48,9 +48,7 @@ async def debug_scan(scan_id: int) -> None:
         excludes = list(scan.exclude_keywords or [])
         known = set(
             (
-                await session.scalars(
-                    select(ScanItem.url_key).where(ScanItem.scan_id == scan_id)
-                )
+                await session.scalars(select(ScanItem.url_key).where(ScanItem.scan_id == scan_id))
             ).all()
         )
 

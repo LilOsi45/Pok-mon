@@ -128,9 +128,7 @@ class TestEmbed:
         return None
 
     def test_shows_trend_low_and_savings(self):
-        embed = build_embed(
-            self._event(price=74.99, cardmarket_trend=89.9, cardmarket_low=79.0)
-        )
+        embed = build_embed(self._event(price=74.99, cardmarket_trend=89.9, cardmarket_low=79.0))
         value = self._field(embed, "Cardmarket")
         assert value is not None
         assert "89.90" in value and "79.00" in value
@@ -225,7 +223,9 @@ class TestManualReference:
     async def test_live_api_price_wins_over_the_manual_one(self):
         event = self._event()
         ref = cardmarket.PriceReference(7, "X", trend=95.0, low=88.0, url="https://cm/live")
-        watch = self._watch(cardmarket_id=7, reference_price=89.9, reference_url="https://cm/manual")
+        watch = self._watch(
+            cardmarket_id=7, reference_price=89.9, reference_url="https://cm/manual"
+        )
         with patch("app.cardmarket.price_reference", AsyncMock(return_value=ref)):
             await attach_cardmarket(watch, event)
         assert event.cardmarket_trend == 95.0

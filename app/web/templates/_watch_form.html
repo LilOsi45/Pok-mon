@@ -31,6 +31,17 @@
       </select>
     </div>
     <div>
+      {# The fetch route used to be settable only as raw JSON in the detection
+         column — i.e. not at all from here. A shop behind a bot wall needs it,
+         so it belongs in the form, as words rather than JSON. #}
+      <label for="f-fetcher">Abruf-Methode</label>
+      <select id="f-fetcher" name="fetcher">
+        {% for value, name in fetchers %}
+        <option value="{{ value }}" {{ 'selected' if watch and (watch.detection or {}).get('fetcher') == value }}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
       <label for="f-interval">Poll interval (s)</label>
       <input id="f-interval" name="interval_seconds" type="number" min="60" value="{{ watch.interval_seconds if watch else defaults.interval }}">
     </div>

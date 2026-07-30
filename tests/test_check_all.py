@@ -1,4 +1,4 @@
-""""Alle prüfen" sweeps: background execution, ordering, double-click guard."""
+""" "Alle prüfen" sweeps: background execution, ordering, double-click guard."""
 
 from __future__ import annotations
 
@@ -134,7 +134,7 @@ class TestEndpoints:
         assert "<tr" in resp.text or "Keine" in resp.text
 
     async def test_paths_are_not_swallowed_by_the_id_routes(self, client, session):
-        """"check-all" must not be parsed as a watch/scan id (422)."""
+        """ "check-all" must not be parsed as a watch/scan id (422)."""
         with patch.object(routes, "run_sweep", AsyncMock()):
             assert (await client.post("/watches/check-all")).status_code == 200
             assert (await client.post("/scanner/check-all")).status_code == 200

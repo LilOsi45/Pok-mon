@@ -181,9 +181,34 @@ def merge_channels(selected: list[str], extra: str) -> list[str]:
     return merged
 
 
+# How a watch fetches its page. Stored in detection["fetcher"]; empty = default.
+# Named in plain words because this is the setting that decides whether a watch
+# behind a bot wall sees the shop at all — Pokémon Center answers the default
+# client with a one-kilobyte challenge page and only the unlocker gets through.
+FETCHER_CHOICES: tuple[tuple[str, str], ...] = (
+    ("", "Standard — schnell, kostenlos"),
+    ("playwright", "Echter Browser — für JS-lastige Shops"),
+    ("scraperapi", "Unlocker — kommt durch Bot-Sperren, kostet Geld"),
+)
+
+
+def _fetcher_choice(raw: str) -> str:
+    """Keep only a fetcher the app can actually run.
+
+    "brightdata" is the provider name and appeared in older notes; it is the
+    unlocker, so accept it rather than silently storing a value that falls back
+    to the plain client.
+    """
+    value = raw.strip().lower()
+    if value == "brightdata":
+        value = "scraperapi"
+    return value if value in {v for v, _ in FETCHER_CHOICES} else ""
+
+
 async def _watch_form_context(session: AsyncSession, watch: Watch | None = None) -> dict:
     return {
         "watch": watch,
+        "fetchers": FETCHER_CHOICES,
         "games": [
             (g.value, "Pokémon TCG" if g == Game.POKEMON else "One Piece Card Game") for g in Game
         ],
@@ -236,6 +261,7 @@ def _apply_watch_form(
     cardmarket_id: str = "",
     reference_price: str = "",
     reference_url: str = "",
+    fetcher: str = "",
 ) -> None:
     from app.monitor.detection import parse_german_price
 
@@ -254,6 +280,13 @@ def _apply_watch_form(
     watch.cardmarket_id = int(cardmarket_id) if cardmarket_id.strip().isdigit() else None
     watch.reference_price = parse_german_price(reference_price) if reference_price.strip() else None
     watch.reference_url = reference_url.strip() or None
+    # A fresh dict, because the JSON column is not change-tracked: mutating the
+    # existing one in place would look unchanged to SQLAlchemy and never commit.
+    # Other detection keys (cardmarket id_product, min_articles, …) are kept.
+    detection = {k: v for k, v in (watch.detection or {}).items() if k != "fetcher"}
+    if chosen := _fetcher_choice(fetcher):
+        detection["fetcher"] = chosen
+    watch.detection = detection
     watch.priority = priority == "on"
     was_first_seen = watch.notify_on_first_seen
     watch.notify_on_first_seen = notify_on_first_seen == "on"
@@ -283,6 +316,7 @@ async def create_watch(
     cardmarket_id: str = Form(""),
     reference_price: str = Form(""),
     reference_url: str = Form(""),
+    fetcher: str = Form(""),
 ):
     watch = Watch()
     _apply_watch_form(
@@ -301,6 +335,7 @@ async def create_watch(
         cardmarket_id,
         reference_price,
         reference_url,
+        fetcher,
     )
     session.add(watch)
     await session.commit()
@@ -359,6 +394,7 @@ async def update_watch(
     cardmarket_id: str = Form(""),
     reference_price: str = Form(""),
     reference_url: str = Form(""),
+    fetcher: str = Form(""),
 ):
     watch = await session.get(Watch, watch_id)
     if watch is None:
@@ -379,6 +415,7 @@ async def update_watch(
         cardmarket_id,
         reference_price,
         reference_url,
+        fetcher,
     )
     await session.commit()
     schedule_watch(watch)

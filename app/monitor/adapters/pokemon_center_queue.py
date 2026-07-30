@@ -23,16 +23,16 @@ Detection signals, strongest first:
 4. early warning: the edge stops answering the way it does at rest (200/403)
    and returns 429 or any 5xx — the wall going up as a drop spins up
 
-Choosing a fetcher (detection config)
--------------------------------------
+Choosing a fetcher ("Abruf-Methode" in the watch form)
+------------------------------------------------------
 Re-measured against pokemoncenter.com/de-de, reading the body size and not just
 the status code:
 
-    (default), server IP       plain httpx  -> 200, but only 1055 chars
+    Standard, server IP        plain httpx  -> 200, but only 1055 chars
                                                (bot interstitial, noindex meta)
-    (default), via proxy       plain httpx  -> 403 (CloudFront)
-    playwright                 real browser -> 403, 1565 chars (challenge)
-    {"fetcher": "brightdata"}  unlocker     -> 200, 547737 chars (the real page)
+    Standard, via proxy        plain httpx  -> 403 (CloudFront)
+    Echter Browser             playwright   -> 403, 1565 chars (challenge)
+    Unlocker                   scraperapi   -> 200, 547737 chars (the real page)
 
 So the unlocker is the only client that reaches the store, and a queue alarm
 without it is blind: `_is_interstitial` reports UNKNOWN rather than pretending
@@ -112,7 +112,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
         fetcher = self.detection_config.get("fetcher")
         if fetcher == "playwright":
             return await fetchers.fetch_playwright(url)
-        if fetcher == "brightdata":
+        if fetcher in ("scraperapi", "brightdata"):
             # Paid fallback for when the site stops answering us directly. It
             # gets past a bot check, and Queue-it is a server-side waiting room
             # rather than a bot check, so a live queue should be served to it
@@ -197,8 +197,8 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
                 status=StockStatus.UNKNOWN,
                 title="Pokémon Center",
                 note=(
-                    f"nur Bot-Prüfseite ({len(page.text)} Zeichen, HTTP {status}) — "
-                    'blind für die Queue, Detection auf {"fetcher": "brightdata"} setzen'
+                    f"nur Bot-Prüfseite ({len(page.text)} Zeichen, HTTP {status}) — blind "
+                    'für die Queue, in der Watch "Abruf-Methode: Unlocker" auswählen'
                 ),
             )
 

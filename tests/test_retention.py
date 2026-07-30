@@ -62,9 +62,7 @@ async def test_prunes_only_rows_past_the_cutoff(session, watch):
 @pytest.mark.asyncio
 async def test_scanner_memory_is_never_pruned(session):
     """scan_items is the dedupe memory — pruning it would re-alert everything."""
-    scan = ProductScan(
-        game=Game.POKEMON, label="s", url="https://shop.example/c", keywords=["x"]
-    )
+    scan = ProductScan(game=Game.POKEMON, label="s", url="https://shop.example/c", keywords=["x"])
     session.add(scan)
     await session.commit()
     old = utcnow() - timedelta(days=900)
@@ -133,7 +131,7 @@ async def test_prune_job_runs_standalone(monkeypatch):
 
     called = AsyncMock()
     with (
-        patch("app.db.get_sessionmaker", lambda: (lambda: FakeSession())),
+        patch("app.db.get_sessionmaker", lambda: lambda: FakeSession()),
         patch("app.retention.prune_old_rows", called),
     ):
         await prune_job()

@@ -122,8 +122,8 @@ async def debug_watch(watch_id: int) -> None:
             )
         print(
             "Wenn der Browser eine deutlich größere Seite oder HTTP 200 liefert, sieht er\n"
-            "mehr als der einfache Abruf. Dann lohnt sich in der Watch unter Detection:\n"
-            '    {"fetcher": "playwright"}'
+            'mehr als der einfache Abruf. Dann in der Watch "Abruf-Methode" auf\n'
+            '"Echter Browser" stellen. Kommt auch der nicht durch: "Unlocker".'
         )
 
 

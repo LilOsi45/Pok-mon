@@ -82,7 +82,10 @@ def resolve_adapter(
     if cls is None:
         cls = GenericAdapter
     adapter = cls(detection_config)
-    # Per-watch fetcher override, e.g. {"fetcher": "playwright"}
+    # Per-watch fetcher override, set by the "Abruf-Methode" field on the watch.
+    # "brightdata" is the provider name for the unlocker and appears in older
+    # notes; map it, because an unknown value here silently falls back to the
+    # plain client — exactly the failure the setting exists to prevent.
     if fetcher := detection_config.get("fetcher"):
-        adapter.fetcher = fetcher  # type: ignore[misc]
+        adapter.fetcher = "scraperapi" if fetcher == "brightdata" else fetcher  # type: ignore[misc]
     return adapter

@@ -47,9 +47,7 @@ class TestClassification:
 
     def test_error_wins_over_a_stale_timestamp(self):
         """A stale check that also errored: the schedule problem is the real one."""
-        rows = collect(
-            [watch(last_check_at=utcnow() - timedelta(hours=2), last_error="boom")], []
-        )
+        rows = collect([watch(last_check_at=utcnow() - timedelta(hours=2), last_error="boom")], [])
         assert rows[0].state == "VERALTET"
 
     def test_scanners_are_included(self):

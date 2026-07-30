@@ -126,7 +126,7 @@ class TestConcurrencyCeiling:
                 )
 
         with (
-            patch("app.db.get_sessionmaker", lambda: (lambda: FakeSession())),
+            patch("app.db.get_sessionmaker", lambda: lambda: FakeSession()),
             patch("app.monitor.service.check_watch", fake_check),
         ):
             await asyncio.gather(*(check_watch_by_id(i) for i in range(12)))
@@ -172,7 +172,7 @@ class TestConcurrencyCeiling:
                 )
 
         with (
-            patch("app.db.get_sessionmaker", lambda: (lambda: FakeSession())),
+            patch("app.db.get_sessionmaker", lambda: lambda: FakeSession()),
             patch("app.scanner.run_scan", fake_scan),
         ):
             await asyncio.gather(*(run_scan_by_id(i) for i in range(8)))

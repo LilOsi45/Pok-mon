@@ -33,9 +33,7 @@ class TestAdapterWiring:
 
 class TestScraperRequest:
     def test_scraperapi_params(self, monkeypatch):
-        _reload_settings(
-            monkeypatch, SCRAPER_API_KEY="secret", SCRAPER_API_PROVIDER="scraperapi"
-        )
+        _reload_settings(monkeypatch, SCRAPER_API_KEY="secret", SCRAPER_API_PROVIDER="scraperapi")
         endpoint, params = _scraper_request("https://shop.de/p/1")
         assert "api.scraperapi.com" in endpoint
         assert params["api_key"] == "secret"
@@ -45,9 +43,7 @@ class TestScraperRequest:
         config.get_settings.cache_clear()
 
     def test_scrapingbee_params(self, monkeypatch):
-        _reload_settings(
-            monkeypatch, SCRAPER_API_KEY="secret", SCRAPER_API_PROVIDER="scrapingbee"
-        )
+        _reload_settings(monkeypatch, SCRAPER_API_KEY="secret", SCRAPER_API_PROVIDER="scrapingbee")
         endpoint, params = _scraper_request("https://shop.de/p/1")
         assert "app.scrapingbee.com" in endpoint
         assert params["render_js"] == "true"
@@ -137,9 +133,7 @@ class TestBrightDataEmptyBody:
             SCRAPER_API_PROVIDER="brightdata",
             BRIGHTDATA_ZONE="web_unlocker1",
         )
-        response = httpx.Response(
-            200, text="   ", headers={"x-brd-error": "target_unreachable"}
-        )
+        response = httpx.Response(200, text="   ", headers={"x-brd-error": "target_unreachable"})
 
         class FakeClient:
             async def __aenter__(self):
