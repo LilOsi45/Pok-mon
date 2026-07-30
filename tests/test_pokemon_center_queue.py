@@ -14,6 +14,17 @@ from app.monitor.service import check_watch
 
 URL = "https://www.pokemoncenter.com/de-de"
 
+# The bot interstitial as measured on the live server (1055 chars direct, 1565
+# via Playwright), shortened. Its fingerprint matters: the adapter used to treat
+# *any* small page as this challenge, which meant a waiting room in wording we
+# do not have was filed as "just the bot wall" and never alerted. Tests that
+# fake the challenge must therefore look like the real thing.
+CHALLENGE_HTML = (
+    '<html style="height:100%"><head><META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">'
+    '<script src="/vice-come-Soldenyson" async=""></script>'
+    "<style>#cmsg{animation: A 1.5s;}</style></head><body></body></html>"
+)
+
 
 def page(
     status: int = 200,
@@ -71,7 +82,7 @@ class TestDetection:
         queue look healthy. It is UNKNOWN — the alert on 429/5xx still fires,
         because that check runs first.
         """
-        result = PokemonCenterQueueAdapter().parse(page(status=403, text="cmsg challenge"))
+        result = PokemonCenterQueueAdapter().parse(page(status=403, text=CHALLENGE_HTML))
         assert result.status == StockStatus.UNKNOWN
         assert "Bot-Prüfseite" in result.note
 
@@ -176,7 +187,7 @@ class TestWatchDebugSignals:
     def test_quiet_page_has_no_signals(self):
         from app.watch_debug import _queue_signals
 
-        assert _queue_signals(page(status=403, text="cmsg challenge")) == []
+        assert _queue_signals(page(status=403, text=CHALLENGE_HTML)) == []
 
 
 @pytest.mark.asyncio
@@ -279,11 +290,7 @@ class TestInterstitialIsNotHealth:
     queue" — a watch permanently unable to see a queue, presented as healthy.
     """
 
-    CHALLENGE = (
-        '<html style="height:100%"><head><META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">'
-        '<script src="/vice-come-Soldenyson" async=""></script>'
-        "<style>#cmsg{animation: A 1.5s;}</style></head><body></body></html>"
-    )
+    CHALLENGE = CHALLENGE_HTML
 
     def _page(self, text: str, status: int = 200) -> PageResult:
         return PageResult(
@@ -311,6 +318,77 @@ class TestInterstitialIsNotHealth:
 
         assert result.status is StockStatus.OUT_OF_STOCK
         assert "idle" in (result.note or "")
+
+
+class TestAQueueWeCannotRead:
+    """The two signals that need no guesswork are both gone.
+
+    The redirect and the final URL identify a Queue-it waiting room beyond
+    doubt, and the unlocker — the only client that reaches this shop at all —
+    destroys both by following the redirect itself. That leaves the body, and
+    Pokémon Center customises the waiting room text, so a phrase list is a
+    guess. These are the signals that do not depend on the wording.
+    """
+
+    def _page(self, text: str, status: int = 200) -> PageResult:
+        return PageResult(
+            url="https://www.pokemoncenter.com/de-de",
+            final_url="https://www.pokemoncenter.com/de-de",
+            status_code=status,
+            text=text,
+            headers={},
+        )
+
+    def test_a_queue_it_page_in_an_unknown_language_still_fires(self):
+        page = self._page(
+            '<html><head><script src="https://static.queue-it.net/script/queueclient.min.js">'
+            "</script></head><body><h1>お待ちください</h1></body></html>"
+        )
+        result = PokemonCenterQueueAdapter().parse(page)
+
+        assert result.status is StockStatus.IN_STOCK
+        assert "Queue ist OFFEN" in (result.alert_title or "")
+
+    def test_the_queue_it_tag_on_the_normal_store_page_is_not_a_queue(self):
+        """It ships with every page, queue or no queue — this is the false
+        alarm that would fire on every single check."""
+        store = (
+            "<html>"
+            + ("x" * 60000)
+            + '<script src="https://static.queue-it.net/script/queueclient.min.js"></script>'
+            + '<a href="/de-de/product/box">Box</a></html>'
+        )
+        result = PokemonCenterQueueAdapter().parse(self._page(store))
+
+        assert result.status is StockStatus.OUT_OF_STOCK
+
+    def test_an_unrecognised_page_is_an_alarm_not_silence(self):
+        """Neither the store nor the challenge: the answer changed shape."""
+        result = PokemonCenterQueueAdapter().parse(
+            self._page(
+                "<html><body><h1>Bitte warten</h1><p>Gleich geht es weiter.</p></body></html>"
+            )
+        )
+
+        assert result.status is StockStatus.IN_STOCK
+        assert "verändert" in (result.alert_title or "")
+
+    def test_the_known_challenge_is_still_not_an_alarm(self):
+        """Otherwise every check on the free path would ping."""
+        challenge = TestInterstitialIsNotHealth.CHALLENGE
+        result = PokemonCenterQueueAdapter().parse(self._page(challenge))
+
+        assert result.status is StockStatus.UNKNOWN
+
+    def test_a_403_block_page_does_not_ping(self):
+        """CloudFront's refusal is small and unfamiliar too — but 403 is how
+        this shop answers us at rest, so it is not news."""
+        result = PokemonCenterQueueAdapter().parse(
+            self._page("<html><body>ERROR: The request could not be satisfied</body></html>", 403)
+        )
+
+        assert result.status is StockStatus.UNKNOWN
+        assert "kein Urteil" in (result.note or "")
 
     def test_a_small_page_that_shows_products_is_still_the_store(self):
         small_but_real = '<html><a href="/de-de/product/box">Eine Box</a></html>'

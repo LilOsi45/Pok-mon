@@ -20,8 +20,18 @@ Detection signals, strongest first:
 3. queue-page phrases in the body — also on HTTP 503, which Queue-it's edge
    mode uses while holding visitors (generic queue-it JS tags on the normal
    page do NOT count, they are present even when no queue runs)
-4. early warning: the edge stops answering the way it does at rest (200/403)
+4. a queue-it reference on a page that is not the store — same room, wording we
+   do not have; Pokémon Center customises the waiting room text
+5. early warning: the edge stops answering the way it does at rest (200/403)
    and returns 429 or any 5xx — the wall going up as a drop spins up
+6. last resort: HTTP 200 that is neither the store nor the known challenge. The
+   shape of the answer changed, and on this domain that means the waiting room
+
+Signals 4 and 6 exist because signals 1-3 are unproven: nobody here has watched
+a live Pokémon Center queue through the unlocker, and the two signals that need
+no guesswork (the redirect and the final URL) are both destroyed by the unlocker
+following redirects itself. So the adapter also fires on "this is not the page I
+know", which needs no knowledge of Queue-it's wording at all.
 
 Choosing a fetcher ("Abruf-Methode" in the watch form)
 ------------------------------------------------------
@@ -35,10 +45,10 @@ the status code:
     Unlocker                   scraperapi   -> 200, 547737 chars (the real page)
 
 So the unlocker is the only client that reaches the store, and a queue alarm
-without it is blind: `_is_interstitial` reports UNKNOWN rather than pretending
-the store is quiet. The cost is real — one request per interval, per day — and
-the redirect signal is lost because the unlocker follows redirects itself, so
-detection there rests on the body phrases.
+without it is blind: `_shape` reports CHALLENGE and the verdict is UNKNOWN,
+rather than pretending the store is quiet. Confirmed live afterwards: 615318
+characters through the unlocker. The cost is real — one request per interval,
+around the clock.
 
 The proxy must stay out of the way either way: unlike the shops, this site
 blocks the residential proxy and answers our own address.
@@ -75,23 +85,39 @@ QUEUE_PAGE_PHRASES = (
 
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
-# The real store page is ~550 KB. The bot interstitial is about a kilobyte of
-# obfuscated JavaScript, served with HTTP 200 and a noindex meta — measured on
-# the live server, direct fetch: 1055 characters.
+# The real store page is ~550-615 KB. The bot interstitial is about a kilobyte
+# of obfuscated JavaScript, served with HTTP 200 and a noindex meta — measured on
+# the live server, direct fetch: 1055 characters, Playwright: 1565.
 INTERSTITIAL_MAX_CHARS = 8000
 STORE_MARKERS = ("/de-de/product", "/en-us/product", "pokémon-sammelkartenspiel", "add to cart")
 
+# The challenge page's own fingerprint, from both measured samples: a noindex
+# meta and a CSS animation that hides the "please enable JavaScript" message.
+# Needed to tell a challenge apart from *any other* small page — see _shape.
+CHALLENGE_MARKERS = ("#cmsg{animation", "noindex, nofollow")
 
-def _is_interstitial(page: PageResult) -> bool:
-    """True when we got a challenge/holding page instead of the store.
+STORE = "store"
+CHALLENGE = "challenge"
+OTHER = "other"
 
-    Judged on the body, not the status code: the challenge comes back as 200.
+
+def _shape(page: PageResult) -> str:
+    """What kind of page came back — judged on the body, never the status code.
+
+    Both the store and the challenge answer with HTTP 200, so the status says
+    nothing. Three shapes matter, and the third is the point: a small page that
+    is neither the store nor the known challenge is *something new*, and on this
+    domain the likeliest something is the waiting room.
     """
     body = page.text or ""
-    if len(body) > INTERSTITIAL_MAX_CHARS:
-        return False
     lowered = body.lower()
-    return not any(marker in lowered for marker in STORE_MARKERS)
+    if any(marker in lowered for marker in STORE_MARKERS):
+        return STORE
+    if len(body) > INTERSTITIAL_MAX_CHARS:
+        return STORE  # half a megabyte of markup is the shop, whatever it says
+    if any(marker in lowered for marker in CHALLENGE_MARKERS):
+        return CHALLENGE
+    return OTHER
 
 
 # How the edge answers us at rest: the normal store (200) or — far more often —
@@ -168,6 +194,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
         location = (page.headers.get("location") or "").lower()
         body_lower = page.text[:20000].lower()
         status = page.status_code
+        shape = _shape(page)
 
         # 1. Queue-it waiting room reached — the drop is live.
         if (
@@ -176,6 +203,16 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
             or any(phrase in body_lower for phrase in QUEUE_PAGE_PHRASES)
         ):
             return self._signal("🚨 Queue ist OFFEN", "queue detected")
+
+        # 1b. Same room, wording we do not have. The phrase list above is in
+        #     English and German, but Pokémon Center customises the waiting room
+        #     and the unlocker follows the redirect itself, so the URL signal is
+        #     gone too. On a page that is NOT the store, a queue-it reference is
+        #     the queue. On the store page it means nothing — the tag ships with
+        #     every page whether a queue runs or not, which is why the shape
+        #     check has to come first.
+        if shape is not STORE and QUEUE_HOST_MARKER in body_lower:
+            return self._signal("🚨 Queue ist OFFEN", f"queue-it page, HTTP {status}")
 
         # 2. Heightened anti-bot / overload — PC serves a permanent JS challenge
         #    (403) at rest, so we can't read the queue directly; but when a drop
@@ -186,13 +223,20 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
             label = "Rate-Limit" if status == 429 else "Anti-Bot hoch"
             return self._signal(f"⚠️ PC-Aktivität — {label} (Drop?)", f"HTTP {status}")
 
-        # 3. Are we even looking at the store? A bot interstitial is served with
-        #    HTTP 200 and about a kilobyte of obfuscated JavaScript, while the
-        #    real page is well over half a megabyte. Reading only the status code
-        #    made that look like "store normal, no queue" — a watch that can
-        #    never see a queue reported as healthy, which is the worst possible
-        #    answer for an alarm.
-        if _is_interstitial(page):
+        # 3. The store, no queue — idle baseline, no alert (we ping on *changes*
+        #    away from this).
+        if shape is STORE:
+            return StockResult(
+                status=StockStatus.OUT_OF_STOCK,
+                title="Pokémon Center",
+                note=f"idle (HTTP {status}, {len(page.text)} Zeichen)",
+            )
+
+        # 4. The bot interstitial: HTTP 200 and about a kilobyte of obfuscated
+        #    JavaScript. Reading only the status code made this look like "store
+        #    normal, no queue" — a watch that can never see a queue, reported as
+        #    healthy, which is the worst possible answer for an alarm.
+        if shape is CHALLENGE:
             return StockResult(
                 status=StockStatus.UNKNOWN,
                 title="Pokémon Center",
@@ -202,10 +246,21 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
                 ),
             )
 
-        # 4. Steady state: the real store, no queue — idle baseline, no alert
-        #    (we ping on *changes* away from this).
+        # 5. HTTP 200, but neither the store nor a challenge we recognise. The
+        #    shop does not serve third page shapes for fun; during a drop it
+        #    serves the waiting room. Alarm rather than silence: a false ping
+        #    costs one glance, a missed drop costs the drop — and this only fires
+        #    when the page changes shape, which at rest it never does.
+        if status == 200:
+            return self._signal(
+                "⚠️ PC-Seite verändert (Queue?)",
+                f"unbekannte Seite ({len(page.text)} Zeichen, HTTP 200) — weder Shop noch Bot-Prüfung",
+            )
+
+        # 6. Non-200 that IDLE_STATUSES already called normal (403/404): the
+        #    permanent challenge or a wrong URL, nothing to announce.
         return StockResult(
-            status=StockStatus.OUT_OF_STOCK,
+            status=StockStatus.UNKNOWN,
             title="Pokémon Center",
-            note=f"idle (HTTP {status}, {len(page.text)} Zeichen)",
+            note=f"HTTP {status}, {len(page.text)} Zeichen — kein Urteil möglich",
         )
