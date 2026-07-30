@@ -411,6 +411,24 @@ def _scraper_request(target: str) -> tuple[str, dict]:
     return "http://api.scraperapi.com/", params
 
 
+# The unlocker reports the *target's* status in a header; its own HTTP status
+# describes the API call. Confusing the two produced a false drop alert: a 502
+# from api.brightdata.com (nginx, 122 bytes) was handed to the queue adapter,
+# which reads a 5xx as "the shop's wall is going up, a drop is spinning up".
+UPSTREAM_STATUS_HEADER = "x-brd-status-code"
+# Statuses that, without an upstream header, can only be the API failing on us.
+GATEWAY_FAILURE_STATUSES = (429, 500, 502, 503, 504)
+
+
+def _upstream_status(resp: httpx.Response) -> int | None:
+    """The status the shop gave the unlocker, if the unlocker told us."""
+    raw = resp.headers.get(UPSTREAM_STATUS_HEADER)
+    try:
+        return int(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
 async def _fetch_brightdata(
     url: str, settings, start: float, extra_headers: dict[str, str] | None
 ) -> PageResult:
@@ -441,6 +459,15 @@ async def _fetch_brightdata(
         raise FetchError(
             f"brightdata auth error (HTTP {resp.status_code}) — check API token / BRIGHTDATA_ZONE"
         )
+    upstream = _upstream_status(resp)
+    if upstream is None and resp.status_code in GATEWAY_FAILURE_STATUSES:
+        # Our own service is down, not the shop. Fail the fetch: the watch then
+        # records an error that the health report and the watchdog pick up,
+        # instead of the adapter reading the gateway's 5xx as shop activity.
+        raise FetchError(
+            f"brightdata gateway error (HTTP {resp.status_code}) for {url} — "
+            f"der Unlocker selbst antwortet nicht, kein Urteil über den Shop"
+        )
     if not resp.text.strip():
         # The 200 above is the *API's* status, not the target's. An empty body
         # means the unlocker never got the page — reporting that as a
@@ -456,7 +483,9 @@ async def _fetch_brightdata(
     return PageResult(
         url=url,
         final_url=url,
-        status_code=resp.status_code,
+        # The shop's status when the unlocker reports it, else the API's. Passing
+        # the API's status on blindly also hid target 404s behind an HTTP 200.
+        status_code=upstream if upstream is not None else resp.status_code,
         text=resp.text,
         headers=dict(resp.headers),
         elapsed_ms=int((time.monotonic() - start) * 1000),

@@ -178,3 +178,84 @@ class TestBrightDataEmptyBody:
         page = asyncio.run(fetchers._fetch_brightdata("https://shop.de/x", settings, 0.0, None))
         assert page.status_code == 200 and "Produkt" in page.text
         config.get_settings.cache_clear()
+
+
+class TestWhoseErrorIsIt:
+    """The unlocker's own HTTP status is not the shop's.
+
+    Measured on the queue watch: api.brightdata.com answered 502 with 122 bytes
+    of nginx error page. That was handed on as the *shop's* status, and the queue
+    adapter reads a 5xx as "the wall is going up, a drop is spinning up" — a
+    Discord alert for a Pokémon Center drop that was not happening. The unlocker
+    reports the target's real status in x-brd-status-code.
+    """
+
+    def _fetch(self, monkeypatch, response):
+        settings = _reload_settings(
+            monkeypatch,
+            SCRAPER_API_KEY="token",
+            SCRAPER_API_PROVIDER="brightdata",
+            BRIGHTDATA_ZONE="web_unlocker1",
+        )
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *_args, **_kwargs):
+                return response
+
+        monkeypatch.setattr(fetchers.httpx, "AsyncClient", lambda **kw: FakeClient())
+        try:
+            return asyncio.run(
+                fetchers._fetch_brightdata(
+                    "https://www.pokemoncenter.com/de-de", settings, 0.0, None
+                )
+            )
+        finally:
+            config.get_settings.cache_clear()
+
+    def test_a_gateway_502_is_our_failure_not_a_drop(self, monkeypatch):
+        import httpx
+        import pytest
+
+        nginx = "<html><head><title>502 Bad Gateway</title></head><body></body></html>"
+        with pytest.raises(fetchers.FetchError) as excinfo:
+            self._fetch(monkeypatch, httpx.Response(502, text=nginx, headers={"server": "nginx"}))
+        assert "gateway" in str(excinfo.value)
+
+    def test_the_shops_own_502_is_reported_as_the_shops(self, monkeypatch):
+        """With the upstream header there is no ambiguity — pass it through, so
+        a real edge failure still reaches the adapter as drop activity."""
+        import httpx
+
+        page = self._fetch(
+            monkeypatch,
+            httpx.Response(
+                200, text="<html>edge kaputt</html>", headers={"x-brd-status-code": "502"}
+            ),
+        )
+        assert page.status_code == 502
+
+    def test_a_target_404_is_no_longer_hidden_behind_the_api_200(self, monkeypatch):
+        import httpx
+
+        page = self._fetch(
+            monkeypatch,
+            httpx.Response(
+                200, text="<html>not found</html>", headers={"x-brd-status-code": "404"}
+            ),
+        )
+        assert page.status_code == 404
+
+    def test_a_junk_upstream_header_falls_back_to_the_api_status(self, monkeypatch):
+        import httpx
+
+        page = self._fetch(
+            monkeypatch,
+            httpx.Response(200, text="<html>ok</html>", headers={"x-brd-status-code": "keine"}),
+        )
+        assert page.status_code == 200
