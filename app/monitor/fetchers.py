@@ -416,6 +416,17 @@ def _scraper_request(target: str) -> tuple[str, dict]:
 # from api.brightdata.com (nginx, 122 bytes) was handed to the queue adapter,
 # which reads a 5xx as "the shop's wall is going up, a drop is spinning up".
 UPSTREAM_STATUS_HEADER = "x-brd-status-code"
+# One retry: see _fetch_brightdata for the measured rejection rate. Auth errors
+# and a missing zone are not retried — repeating them just burns requests.
+BRIGHTDATA_ATTEMPTS = 2
+BRIGHTDATA_RETRY_DELAY = 3.0
+
+
+def _retryable(exc: FetchError) -> FetchError:
+    exc.retryable = True  # type: ignore[attr-defined]
+    return exc
+
+
 # Statuses that, without an upstream header, can only be the API failing on us.
 GATEWAY_FAILURE_STATUSES = (429, 500, 502, 503, 504)
 
@@ -432,7 +443,16 @@ def _upstream_status(resp: httpx.Response) -> int | None:
 async def _fetch_brightdata(
     url: str, settings, start: float, extra_headers: dict[str, str] | None
 ) -> PageResult:
-    """Bright Data Web Unlocker API (POST, Bearer auth, raw HTML back)."""
+    """Bright Data Web Unlocker API (POST, Bearer auth, raw HTML back).
+
+    Retries once on a rejection. Measured on pokemoncenter.com/de-de: three
+    consecutive attempts gave a gateway 502, a "captcha or protection page
+    found" (reject_block) and then the real 615031-character page. Roughly one
+    in three attempts fails, which is fine for a report and useless for an alarm
+    — and the shop raises its protection exactly when a drop starts, i.e. when
+    the alarm has to work. A second attempt costs one extra request only on
+    failure and turns a 1-in-3 miss into 1-in-9.
+    """
     if not settings.brightdata_zone:
         raise FetchError("brightdata provider needs BRIGHTDATA_ZONE set")
     payload = {
@@ -446,14 +466,31 @@ async def _fetch_brightdata(
         "Content-Type": "application/json",
         **(extra_headers or {}),
     }
+    last: FetchError | None = None
+    for attempt in range(BRIGHTDATA_ATTEMPTS):
+        if attempt:
+            await asyncio.sleep(BRIGHTDATA_RETRY_DELAY)
+        try:
+            return await _brightdata_once(url, settings, start, payload, headers)
+        except FetchError as exc:
+            if not getattr(exc, "retryable", False):
+                raise
+            log.info("brightdata attempt %d/%d failed: %s", attempt + 1, BRIGHTDATA_ATTEMPTS, exc)
+            last = exc
+    raise last  # type: ignore[misc]
+
+
+async def _brightdata_once(
+    url: str, settings, start: float, payload: dict, headers: dict
+) -> PageResult:
     async with httpx.AsyncClient(timeout=settings.scraper_api_timeout_seconds) as client:
         try:
             resp = await client.post(
                 "https://api.brightdata.com/request", json=payload, headers=headers
             )
         except httpx.HTTPError as exc:
-            raise FetchError(
-                f"brightdata fetch failed for {url}: {type(exc).__name__}: {exc}"
+            raise _retryable(
+                FetchError(f"brightdata fetch failed for {url}: {type(exc).__name__}: {exc}")
             ) from exc
     if resp.status_code in (401, 403):
         raise FetchError(
@@ -464,9 +501,11 @@ async def _fetch_brightdata(
         # Our own service is down, not the shop. Fail the fetch: the watch then
         # records an error that the health report and the watchdog pick up,
         # instead of the adapter reading the gateway's 5xx as shop activity.
-        raise FetchError(
-            f"brightdata gateway error (HTTP {resp.status_code}) for {url} — "
-            f"der Unlocker selbst antwortet nicht, kein Urteil über den Shop"
+        raise _retryable(
+            FetchError(
+                f"brightdata gateway error (HTTP {resp.status_code}) for {url} — "
+                f"der Unlocker selbst antwortet nicht, kein Urteil über den Shop"
+            )
         )
     if not resp.text.strip():
         # The 200 above is the *API's* status, not the target's. An empty body
@@ -476,9 +515,11 @@ async def _fetch_brightdata(
         detail = ", ".join(
             f"{k}={v}" for k, v in resp.headers.items() if k.lower().startswith(("x-", "brd"))
         )
-        raise FetchError(
-            f"brightdata returned an empty body for {url}"
-            + (f" ({detail})" if detail else " (no diagnostic headers)")
+        raise _retryable(
+            FetchError(
+                f"brightdata returned an empty body for {url}"
+                + (f" ({detail})" if detail else " (no diagnostic headers)")
+            )
         )
     return PageResult(
         url=url,

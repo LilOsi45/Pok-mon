@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 import app.config as config
 import app.monitor.fetchers as fetchers
 from app.monitor.adapters.mediamarkt_de import MediaMarktDeAdapter, SaturnDeAdapter
@@ -13,6 +15,14 @@ from app.monitor.adapters.stubs import (
     SmythsToysDeAdapter,
 )
 from app.monitor.fetchers import _scraper_request
+
+URL = "https://www.pokemoncenter.com/de-de"
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_wait(monkeypatch):
+    """The retry sleeps 3 s in production; tests must not."""
+    monkeypatch.setattr(fetchers, "BRIGHTDATA_RETRY_DELAY", 0)
 
 
 def _reload_settings(monkeypatch, **env):
@@ -259,3 +269,72 @@ class TestWhoseErrorIsIt:
             httpx.Response(200, text="<html>ok</html>", headers={"x-brd-status-code": "keine"}),
         )
         assert page.status_code == 200
+
+
+class TestRetry:
+    """One rejection must not blind the alarm.
+
+    Measured live on pokemoncenter.com/de-de: gateway 502, then "captcha or
+    protection page found", then the real 615031-character page. Roughly one
+    attempt in three fails — and the shop raises its protection exactly when a
+    drop starts, which is when the queue alarm has to work.
+    """
+
+    def _run(self, monkeypatch, responses):
+        settings = _reload_settings(
+            monkeypatch,
+            SCRAPER_API_KEY="token",
+            SCRAPER_API_PROVIDER="brightdata",
+            BRIGHTDATA_ZONE="web_unlocker1",
+        )
+        calls = []
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *_a, **_kw):
+                calls.append(1)
+                return responses[len(calls) - 1]
+
+        monkeypatch.setattr(fetchers.httpx, "AsyncClient", lambda **kw: FakeClient())
+        try:
+            return asyncio.run(fetchers._fetch_brightdata(URL, settings, 0.0, None)), calls
+        finally:
+            config.get_settings.cache_clear()
+
+    def test_a_rejection_is_retried_and_the_second_answer_wins(self, monkeypatch):
+        import httpx
+
+        rejected = httpx.Response(
+            200, text="", headers={"x-brd-error-code": "reject_block", "x-brd-status-code": "502"}
+        )
+        page, calls = self._run(
+            monkeypatch, [rejected, httpx.Response(200, text="<html>" + "x" * 5000 + "</html>")]
+        )
+        assert len(calls) == 2
+        assert page.status_code == 200 and len(page.text) > 5000
+
+    def test_two_rejections_still_fail(self, monkeypatch):
+        import httpx
+
+        rejected = httpx.Response(200, text="", headers={"x-brd-error-code": "reject_block"})
+        with pytest.raises(fetchers.FetchError) as excinfo:
+            self._run(monkeypatch, [rejected, rejected])
+        assert "empty body" in str(excinfo.value)
+
+    def test_an_auth_error_is_not_retried(self, monkeypatch):
+        """Repeating a bad token just burns requests."""
+        import httpx
+
+        with pytest.raises(fetchers.FetchError):
+            self._run(monkeypatch, [httpx.Response(401, text="nope")] * 2)
+
+    def test_a_good_first_answer_costs_one_request(self, monkeypatch):
+        import httpx
+
+        _page, calls = self._run(monkeypatch, [httpx.Response(200, text="<html>ok</html>")])
+        assert len(calls) == 1
