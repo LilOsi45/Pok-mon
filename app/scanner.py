@@ -128,10 +128,31 @@ def _jsonld_products(html: str, base_url: str) -> list[FoundProduct]:
     return products
 
 
+PRODUCT_PATH_MARKERS = ("/product/", "/products/", "/produkt/", "/artikel/", "/dp/", "/p/")
+
+
+def _looks_like_a_product_url(path_lower: str) -> bool:
+    return any(marker in path_lower for marker in PRODUCT_PATH_MARKERS)
+
+
 def _anchor_products(html: str, base_url: str) -> list[FoundProduct]:
+    """Products from plain links, narrowed to real product URLs where possible.
+
+    Blacklisting navigation paths does not scale: pokemoncenter.com's category
+    page offered "Alle Neuerscheinungen shoppen", "30 Jahre Pokémon" and
+    "LEGO® Pokémon™" as matches, all long enough to pass the title heuristic and
+    all pointing at /category/ pages. Those would have pinged as drops, which is
+    how an alert channel stops being believed.
+
+    Blacklisting /category/ is not the answer either — Shopify products live at
+    /collections/<x>/products/<y>. So when a page contains any link that looks
+    like a product, only those count; pages with no such marker keep the old
+    best-effort behaviour.
+    """
     tree = HTMLParser(html)
     base_host = urlsplit(base_url).netloc.lower().removeprefix("www.")
     products: list[FoundProduct] = []
+    product_like: list[FoundProduct] = []
     for anchor in tree.css("a[href]"):
         attrs = anchor.attributes or {}
         href = (attrs.get("href") or "").strip()
@@ -154,8 +175,11 @@ def _anchor_products(html: str, base_url: str) -> list[FoundProduct]:
         price = None
         if parent := anchor.parent:
             price = extract_price_from_text(parent.text(deep=True, separator=" ")[:400])
-        products.append(FoundProduct(url=url, title=title[:300], price=price))
-    return products
+        found = FoundProduct(url=url, title=title[:300], price=price)
+        products.append(found)
+        if _looks_like_a_product_url(path_lower):
+            product_like.append(found)
+    return product_like or products
 
 
 def parse_listing(html: str, base_url: str) -> list[FoundProduct]:
