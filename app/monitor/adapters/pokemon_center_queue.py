@@ -25,17 +25,23 @@ Detection signals, strongest first:
 
 Choosing a fetcher (detection config)
 -------------------------------------
-Re-measured against pokemoncenter.com/de-de after the browser handshake and
-residential proxies were added — the earlier reading no longer holds:
+Re-measured against pokemoncenter.com/de-de, reading the body size and not just
+the status code:
 
-    (default), server IP       plain httpx  -> HTTP 200
-    (default), via proxy       plain httpx  -> HTTP 403 (CloudFront)
-    {"fetcher": "brightdata"}  unlocker     -> HTTP 200, full page
+    (default), server IP       plain httpx  -> 200, but only 1055 chars
+                                               (bot interstitial, noindex meta)
+    (default), via proxy       plain httpx  -> 403 (CloudFront)
+    playwright                 real browser -> 403, 1565 chars (challenge)
+    {"fetcher": "brightdata"}  unlocker     -> 200, 547737 chars (the real page)
 
-So the default is now the right choice: it is free, and only it can see the
-Queue-it *redirect*, which the unlocker swallows by following redirects itself.
-The proxy must stay out of the way here; unlike the shops, this site blocks the
-proxy and answers our own address.
+So the unlocker is the only client that reaches the store, and a queue alarm
+without it is blind: `_is_interstitial` reports UNKNOWN rather than pretending
+the store is quiet. The cost is real — one request per interval, per day — and
+the redirect signal is lost because the unlocker follows redirects itself, so
+detection there rests on the body phrases.
+
+The proxy must stay out of the way either way: unlike the shops, this site
+blocks the residential proxy and answers our own address.
 """
 
 from __future__ import annotations
