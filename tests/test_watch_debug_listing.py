@@ -91,6 +91,70 @@ class TestListing:
         assert "Keine passende" in capsys.readouterr().out
 
 
+@pytest.mark.asyncio
+class TestRepeatedCheck:
+    """One green check proves the route can work, not that it works.
+
+    The Pokémon Center unlocker was measured turning us away on roughly one
+    attempt in three, so for an alarm the success *rate* is the question — and
+    a rate has to be counted, not sampled once and declared fine.
+    """
+
+    async def _run(self, session, monkeypatch, capsys, adapter, times=3):
+        from app import watch_debug
+
+        watch = _watch(label="Queue-Alarm", url="https://www.pokemoncenter.com/de-de")
+        session.add(watch)
+        await session.commit()
+        monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        monkeypatch.setattr(watch_debug, "resolve_adapter", lambda *a, **kw: adapter)
+        monkeypatch.setattr(watch_debug, "REPEAT_GAP_SECONDS", 0)
+
+        await watch_debug.repeat_watch(watch.id, times)
+        return capsys.readouterr().out
+
+    async def test_a_flaky_route_is_reported_as_a_rate(self, session, monkeypatch, capsys):
+        out = await self._run(session, monkeypatch, capsys, _Flaky(fail_on={2}))
+
+        assert "2 von 3 Versuchen erfolgreich" in out
+        assert "FEHLER" in out
+        assert "615031 Zeichen" in out or "615031" in out
+
+    async def test_a_stable_route_says_so(self, session, monkeypatch, capsys):
+        out = await self._run(session, monkeypatch, capsys, _Flaky(fail_on=set()))
+
+        assert "3 von 3" in out
+        assert "stabil" in out
+
+    async def test_a_dead_route_is_not_dressed_up(self, session, monkeypatch, capsys):
+        out = await self._run(session, monkeypatch, capsys, _Flaky(fail_on={1, 2, 3}))
+
+        assert "0 von 3" in out
+        assert "stimmt etwas nicht" in out
+
+
+class _Flaky:
+    """An adapter that fails on the given attempt numbers."""
+
+    def __init__(self, fail_on: set[int]):
+        self.fail_on = fail_on
+        self.calls = 0
+
+    async def fetch(self, url: str):
+        from app.monitor.base import PageResult
+
+        self.calls += 1
+        if self.calls in self.fail_on:
+            raise RuntimeError("brightdata gateway error (HTTP 502)")
+        return PageResult(url=url, final_url=url, status_code=200, text="x" * 615031)
+
+    def parse(self, page):
+        from app.models import StockStatus
+        from app.monitor.base import StockResult
+
+        return StockResult(status=StockStatus.OUT_OF_STOCK, note="idle")
+
+
 class _Reuse:
     def __init__(self, session):
         self._session = session

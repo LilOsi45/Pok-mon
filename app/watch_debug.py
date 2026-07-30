@@ -20,6 +20,7 @@ from app.monitor.base import PageResult
 from app.monitor.registry import resolve_adapter
 
 BODY_PREVIEW = 240
+REPEAT_GAP_SECONDS = 10.0
 
 
 def _queue_signals(page: PageResult) -> list[str]:
@@ -84,6 +85,56 @@ def _report(name: str, page: PageResult | None, error: str | None) -> None:
     preview = " ".join(page.text.split())[:BODY_PREVIEW]
     print(f"    Anfang        : {preview}")
     print()
+
+
+async def repeat_watch(watch_id: int, times: int) -> None:
+    """Run the watch's own check `times` over and rate it.
+
+    One green check proves the route can work, not that it works. The Pokémon
+    Center unlocker was measured turning us away on roughly one attempt in
+    three, and for an alarm the question is the rate, not a single sample.
+    """
+    async with get_sessionmaker()() as session:
+        watch = await session.get(Watch, watch_id)
+        if watch is None:
+            print(f"Watch {watch_id} gibt es nicht.")
+            return
+        url, adapter_slug, label = watch.url, watch.adapter, watch.label
+        detection = dict(watch.detection or {})
+
+    print(f"Watch {watch_id}: {label}")
+    print(f"{times} Versuche, je 10 s Pause — das dauert ein paar Minuten.")
+    print("=" * 64)
+
+    adapter = resolve_adapter(url, adapter_slug, detection)
+    good = 0
+    for attempt in range(1, times + 1):
+        if attempt > 1:
+            await asyncio.sleep(REPEAT_GAP_SECONDS)
+        try:
+            page = await adapter.fetch(url)
+            result = adapter.parse(page)
+            good += 1
+            print(
+                f"{attempt:>3}. OK      HTTP {page.status_code}  "
+                f"{len(page.text):>7} Zeichen  {page.elapsed_ms / 1000:5.1f} s  "
+                f"-> {result.status.value}"
+                + (f"  {result.alert_title}" if result.alert_title else "")
+            )
+        except Exception as exc:
+            print(f"{attempt:>3}. FEHLER  {type(exc).__name__}: {str(exc)[:90]}")
+
+    print("=" * 64)
+    print(f"{good} von {times} Versuchen erfolgreich.")
+    if good == times:
+        print("Der Abruf ist stabil.")
+    elif good:
+        print(
+            "Aussetzer sind eingeplant: der Tracker prüft alle 3 Minuten weiter,\n"
+            "ein einzelner Fehlversuch verzögert den Alarm also höchstens kurz."
+        )
+    else:
+        print("Kein einziger Versuch kam durch — hier stimmt etwas nicht, schick mir die Ausgabe.")
 
 
 async def debug_watch(watch_id: int) -> None:
@@ -152,24 +203,31 @@ async def list_watches(needle: str | None = None) -> None:
     print("Prüfen mit:  python -m app.watch_debug <ID>")
 
 
-async def _run(target: int | str | None) -> None:
+async def _run(target: int | str | None, times: int) -> None:
     from app.monitor.fetchers import close_client, shutdown_playwright
 
     try:
-        if isinstance(target, int):
-            await debug_watch(target)
-        else:
+        if not isinstance(target, int):
             await list_watches(target)
+        elif times > 1:
+            await repeat_watch(target, times)
+        else:
+            await debug_watch(target)
     finally:
         await shutdown_playwright()
         await close_client()
 
 
 def main() -> None:
-    """No argument lists the watches; a number debugs one; text searches."""
+    """No argument lists the watches; a number debugs one; text searches.
+
+    A second number repeats the check that many times and reports the success
+    rate — "python -m app.watch_debug 63 5".
+    """
     arg = sys.argv[1] if len(sys.argv) > 1 else None
     target: int | str | None = int(arg) if arg and arg.isdigit() else arg
-    asyncio.run(_run(target))
+    second = sys.argv[2] if len(sys.argv) > 2 else ""
+    asyncio.run(_run(target, int(second) if second.isdigit() else 1))
 
 
 if __name__ == "__main__":
