@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import COOKIE_NAME, create_session_cookie, require_auth, verify_password
@@ -581,9 +581,19 @@ def _apply_scan_form(
     channels: list[str],
     use_playwright: str,
     priority: str = "",
-) -> None:
+) -> bool:
+    """Apply the form; returns True when the baseline has to be re-armed.
+
+    A scanner's baseline is "everything that was on the page the first time".
+    Point it at a different page and that baseline describes products that are
+    not there any more, while every product on the new page counts as new — so
+    the next run would announce a whole category as fresh drops. Changing the
+    URL therefore re-arms the baseline: the first run after it records silently,
+    exactly as it does for a newly created scanner.
+    """
     scan.game = Game(game)
     scan.label = label.strip()
+    rearm = bool(scan.id) and scan.url != url.strip()
     scan.url = url.strip()
     scan.keywords = [k.strip() for k in keywords.split(",") if k.strip()]
     scan.exclude_keywords = [k.strip() for k in exclude_keywords.split(",") if k.strip()]
@@ -591,6 +601,9 @@ def _apply_scan_form(
     scan.channels = channels or [game]
     scan.use_playwright = use_playwright == "on"
     scan.priority = priority == "on"
+    if rearm:
+        scan.baseline_done = False
+    return rearm
 
 
 @protected.get("/scanner", response_class=HTMLResponse)
@@ -680,7 +693,7 @@ async def update_scan(
     scan = await session.get(ProductScan, scan_id)
     if scan is None:
         return HTMLResponse("Not found", status_code=404)
-    _apply_scan_form(
+    rearm = _apply_scan_form(
         scan,
         game,
         label,
@@ -692,6 +705,13 @@ async def update_scan(
         use_playwright,
         priority,
     )
+    if rearm:
+        # The remembered products belong to the old page; keeping them would
+        # leave a list of items the scanner can no longer find.
+        await session.execute(delete(ScanItem).where(ScanItem.scan_id == scan.id))
+        log.info(
+            "scanner %s: URL changed — baseline re-armed, remembered products cleared", scan.id
+        )
     await session.commit()
     schedule_scan(scan)
     return RedirectResponse("/scanner", status_code=303)
