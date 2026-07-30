@@ -12,6 +12,13 @@ import pytest
 from app.models import Game, Watch
 
 
+# As long as the real thing: the reason must survive to the end of the line.
+LONG_REASON = (
+    "brightdata returned an empty body for https://www.pokemoncenter.com/de-de "
+    "(x-brd-error=Timeout, x-brd-error-code=timeout, x-brd-status-code=502)"
+)
+
+
 def _watch(**kw) -> Watch:
     return Watch(
         game=Game.POKEMON,
@@ -132,6 +139,13 @@ class TestRepeatedCheck:
         assert "0 von 3" in out
         assert "stimmt etwas nicht" in out
 
+    async def test_the_failure_reason_is_not_cut_off(self, session, monkeypatch, capsys):
+        """A sliced message hid "Timeout" behind "x-brd-error=Tim" and sent the
+        diagnosis after a block that was never there."""
+        out = await self._run(session, monkeypatch, capsys, _Flaky(fail_on={1}), times=1)
+
+        assert LONG_REASON in out
+
 
 class _Flaky:
     """An adapter that fails on the given attempt numbers."""
@@ -145,7 +159,7 @@ class _Flaky:
 
         self.calls += 1
         if self.calls in self.fail_on:
-            raise RuntimeError("brightdata gateway error (HTTP 502)")
+            raise RuntimeError(LONG_REASON)
         return PageResult(url=url, final_url=url, status_code=200, text="x" * 615031)
 
     def parse(self, page):

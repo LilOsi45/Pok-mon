@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 
 from app.db import get_sessionmaker
 from app.models import Watch
@@ -111,6 +112,7 @@ async def repeat_watch(watch_id: int, times: int) -> None:
     for attempt in range(1, times + 1):
         if attempt > 1:
             await asyncio.sleep(REPEAT_GAP_SECONDS)
+        started = time.monotonic()
         try:
             page = await adapter.fetch(url)
             result = adapter.parse(page)
@@ -122,16 +124,26 @@ async def repeat_watch(watch_id: int, times: int) -> None:
                 + (f"  {result.alert_title}" if result.alert_title else "")
             )
         except Exception as exc:
-            print(f"{attempt:>3}. FEHLER  {type(exc).__name__}: {str(exc)[:90]}")
+            # Full text, not a slice: a cut-off reason cost two rounds of wrong
+            # diagnosis here already ("x-brd-error=Tim" hid "Timeout"). The
+            # duration matters just as much — a fast failure and a slow one have
+            # nothing in common.
+            elapsed = time.monotonic() - started
+            print(f"{attempt:>3}. FEHLER  nach {elapsed:5.1f} s  {type(exc).__name__}: {exc}")
 
     print("=" * 64)
-    print(f"{good} von {times} Versuchen erfolgreich.")
+    rate = good / times if times else 0
+    print(f"{good} von {times} Versuchen erfolgreich ({rate:.0%}).")
     if good == times:
         print("Der Abruf ist stabil.")
     elif good:
+        # What matters for an alarm is not a single miss but a run of them. With
+        # a 3-minute interval, the blind window is (1-rate)^n * 3 minutes.
+        blind = (1 - rate) ** 3
         print(
-            "Aussetzer sind eingeplant: der Tracker prüft alle 3 Minuten weiter,\n"
-            "ein einzelner Fehlversuch verzögert den Alarm also höchstens kurz."
+            f"Der Tracker prüft alle 3 Minuten. Dass drei Prüfungen hintereinander\n"
+            f"scheitern — also 9 Minuten blind — passiert bei dieser Quote in {blind:.0%}\n"
+            f"der Fälle. Eine Pokémon-Center-Warteschlange läuft deutlich länger."
         )
     else:
         print("Kein einziger Versuch kam durch — hier stimmt etwas nicht, schick mir die Ausgabe.")
