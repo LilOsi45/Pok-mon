@@ -177,3 +177,60 @@ class _Reuse:
 
     async def __aexit__(self, *exc):
         return False
+
+
+@pytest.mark.asyncio
+class TestScannerListing:
+    """Same trap as the watches: "python -m app.scan_debug <scanner-id>" is not
+    an answer when you know the shop's name and not its number."""
+
+    async def _seed(self, session):
+        from app.models import Game, ProductScan
+
+        session.add_all(
+            [
+                ProductScan(
+                    game=Game.POKEMON,
+                    label="Fantasywelt Neuheiten",
+                    url="https://www.fantasywelt.de/pokemon-neu",
+                ),
+                ProductScan(
+                    game=Game.POKEMON,
+                    label="Games Island",
+                    url="https://games-island.eu/neu",
+                ),
+            ]
+        )
+        await session.commit()
+
+    async def test_a_shop_name_finds_the_scanner(self, session, capsys, monkeypatch):
+        from app import scan_debug
+
+        await self._seed(session)
+        monkeypatch.setattr("app.scan_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+
+        await scan_debug.list_scans("fantasywelt")
+
+        out = capsys.readouterr().out
+        assert "Fantasywelt Neuheiten" in out
+        assert "Games Island" not in out
+
+    async def test_no_argument_lists_all(self, session, capsys, monkeypatch):
+        from app import scan_debug
+
+        await self._seed(session)
+        monkeypatch.setattr("app.scan_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+
+        await scan_debug.list_scans()
+
+        assert "Games Island" in capsys.readouterr().out
+
+    async def test_an_unknown_name_says_so(self, session, capsys, monkeypatch):
+        from app import scan_debug
+
+        await self._seed(session)
+        monkeypatch.setattr("app.scan_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+
+        await scan_debug.list_scans("gibtsnicht")
+
+        assert "Kein passender Scanner" in capsys.readouterr().out

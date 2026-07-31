@@ -128,23 +128,48 @@ async def debug_scan(scan_id: int) -> None:
         )
 
 
-async def _run(scan_id: int) -> None:
+async def list_scans(needle: str | None = None) -> None:
+    """Print id + label for every scanner, optionally filtered by name or URL.
+
+    Demanding an id and answering "Aufruf: ... <scanner-id>" is what made the
+    same instruction unusable for watches: a placeholder in an instruction gets
+    pasted literally. Naming the shop has to be enough to find it.
+    """
+    async with get_sessionmaker()() as session:
+        scans = list((await session.scalars(select(ProductScan).order_by(ProductScan.id))).all())
+    if needle:
+        lowered = needle.lower()
+        scans = [s for s in scans if lowered in s.label.lower() or lowered in s.url.lower()]
+    if not scans:
+        print("Kein passender Scanner gefunden." if needle else "Es gibt noch keine Scanner.")
+        return
+    print(f"{'ID':>4}  {'Name':32}  URL")
+    for s in scans:
+        state = "" if s.enabled else "  (aus)"
+        print(f"{s.id:>4}  {s.label[:32]:32}  {s.url[:60]}{state}")
+    print()
+    print("Prüfen mit:  python -m app.scan_debug <ID>")
+
+
+async def _run(target: int | str | None) -> None:
     """Report, then shut the fetchers down — an un-closed Playwright subprocess
     spews 'Event loop is closed' tracebacks at interpreter exit."""
     from app.monitor.fetchers import close_client, shutdown_playwright
 
     try:
-        await debug_scan(scan_id)
+        if isinstance(target, int):
+            await debug_scan(target)
+        else:
+            await list_scans(target)
     finally:
         await shutdown_playwright()
         await close_client()
 
 
 def main() -> None:
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        print("Aufruf: python -m app.scan_debug <scanner-id>")
-        raise SystemExit(2)
-    asyncio.run(_run(int(sys.argv[1])))
+    """No argument lists the scanners; a number debugs one; text searches."""
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    asyncio.run(_run(int(arg) if arg and arg.isdigit() else arg))
 
 
 if __name__ == "__main__":
