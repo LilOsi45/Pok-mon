@@ -49,7 +49,9 @@ class Row:
         return f"{seconds // 3600}h"
 
 
-def _classify(last_check, last_error, status, interval: int) -> tuple[str, float | None]:
+def _classify(
+    last_check, last_error, status, interval: int, ever_listed: bool = True
+) -> tuple[str, float | None]:
     age = None if last_check is None else (utcnow() - last_check).total_seconds()
     if last_check is None:
         return "NIE GEPRÜFT", None
@@ -58,19 +60,34 @@ def _classify(last_check, last_error, status, interval: int) -> tuple[str, float
     if last_error:
         return "FEHLER", age
     if status is not None and status == StockStatus.UNKNOWN:
-        return "UNKLAR", age
+        # Two completely different problems used to share the label UNKLAR. A
+        # watch whose URL 404s (xzone.de landed on /404.php) and one whose page
+        # loads fine but whose stock markup we cannot read need opposite fixes:
+        # correct the address, or teach the parser. "Never seen listed" tells
+        # them apart, because listing_seen is set the first time a product is
+        # actually found on the page.
+        return ("UNKLAR" if ever_listed else "NICHT GELISTET"), age
     return "OK", age
 
 
 def collect(watches: list[Watch], scans: list[ProductScan]) -> list[Row]:
     rows: list[Row] = []
     for w in watches:
-        state, age = _classify(w.last_check_at, w.last_error, w.last_status, w.interval_seconds)
+        state, age = _classify(
+            w.last_check_at, w.last_error, w.last_status, w.interval_seconds, w.listing_seen
+        )
         rows.append(Row("Watch", w.id, w.label, state, age, w.last_error))
     for s in scans:
         state, age = _classify(s.last_check_at, s.last_error, None, s.interval_seconds)
         rows.append(Row("Scanner", s.id, s.label, state, age, s.last_error))
-    order = {"FEHLER": 0, "VERALTET": 1, "NIE GEPRÜFT": 2, "UNKLAR": 3, "OK": 4}
+    order = {
+        "FEHLER": 0,
+        "VERALTET": 1,
+        "NIE GEPRÜFT": 2,
+        "NICHT GELISTET": 3,
+        "UNKLAR": 4,
+        "OK": 5,
+    }
     return sorted(rows, key=lambda r: (order.get(r.state, 9), r.id))
 
 
@@ -103,7 +120,7 @@ def render(rows: list[Row]) -> str:
     out.append("Betroffen:")
     for row in broken[:MAX_ROWS]:
         name = f"{row.kind[0]}{row.id} {row.label}"[:LABEL_WIDTH]
-        out.append(f"  {row.state:11} {row.age:>4}  {name}")
+        out.append(f"  {row.state:14} {row.age:>4}  {name}")
     if len(broken) > MAX_ROWS:
         out.append(f"  … und {len(broken) - MAX_ROWS} weitere")
 
@@ -111,6 +128,17 @@ def render(rows: list[Row]) -> str:
         out.append(
             "\nVERALTET heißt: Der Shop ist nicht schuld — der Job läuft nicht.\n"
             "Meist hilft ein Neustart:  docker compose restart app"
+        )
+    if any(row.state == "NICHT GELISTET" for row in broken):
+        out.append(
+            "\nNICHT GELISTET heißt: Das Produkt war auf dieser Seite noch nie zu sehen.\n"
+            "Entweder stimmt die URL nicht — oder der Shop hat es noch nicht online.\n"
+            "URL im Browser öffnen: kommt eine Fehlerseite, die Watch korrigieren."
+        )
+    if any(row.state == "UNKLAR" for row in broken):
+        out.append(
+            "\nUNKLAR heißt: Die Seite wurde geladen, aber ob lieferbar oder nicht,\n"
+            "war nicht herauszulesen. Der Shop braucht eine Anpassung — melde ihn."
         )
     return "\n".join(out)
 

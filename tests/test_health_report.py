@@ -19,6 +19,7 @@ def watch(**kw) -> Watch:
         last_check_at=utcnow(),
         last_status=StockStatus.IN_STOCK,
         last_error=None,
+        listing_seen=True,
     )
     return Watch(**{**base, **kw})
 
@@ -35,6 +36,34 @@ class TestClassification:
         """Fetched fine but stock unreadable — a parser problem, not a network one."""
         rows = collect([watch(last_status=StockStatus.UNKNOWN)], [])
         assert rows[0].state == "UNKLAR"
+
+    def test_a_product_never_seen_on_the_page_is_not_the_same_problem(self):
+        """xzone.de answered 404 and landed on /404.php, elbenwald.de served the
+        real page but no readable stock markup. Both were reported as UNKLAR,
+        and they need opposite fixes: correct the URL, or teach the parser."""
+        rows = collect(
+            [watch(last_status=StockStatus.UNKNOWN, listing_seen=False)],
+            [],
+        )
+        assert rows[0].state == "NICHT GELISTET"
+
+    def test_both_appear_with_their_own_advice(self):
+        text = render(
+            collect(
+                [
+                    watch(
+                        id=61,
+                        label="xzone ETB",
+                        last_status=StockStatus.UNKNOWN,
+                        listing_seen=False,
+                    ),
+                    watch(id=62, label="elbenwald TTB", last_status=StockStatus.UNKNOWN),
+                ],
+                [],
+            )
+        )
+        assert "NICHT GELISTET" in text and "URL" in text
+        assert "UNKLAR" in text and "Anpassung" in text
 
     def test_long_overdue_check_means_the_job_is_dead(self):
         rows = collect([watch(last_check_at=utcnow() - timedelta(minutes=30))], [])

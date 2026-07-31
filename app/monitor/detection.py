@@ -138,6 +138,26 @@ def _normalize_availability(value: str | None) -> StockStatus | None:
     return None
 
 
+def parse_microdata(tree: HTMLParser) -> StockStatus | None:
+    """schema.org availability written as HTML attributes rather than JSON-LD.
+
+    Shopware and other shops mark up the page itself — <link itemprop="availability"
+    href="https://schema.org/InStock"> — and carry no ld+json Offer at all. Without
+    this, elbenwald.de returned a fully readable page (509 KB, price 69,95 EUR) with
+    the verdict "no signal": the watch could never report stock either way.
+
+    Precise on purpose: only the availability itemprop counts. Scanning the raw
+    HTML for any schema.org token, which is what scan_raw_availability does, also
+    picks up related-product blocks and would answer for the wrong article.
+    """
+    for node in tree.css("[itemprop='availability']"):
+        attrs = node.attributes or {}
+        raw = attrs.get("href") or attrs.get("content") or node.text(strip=True)
+        if (status := _normalize_availability(raw)) is not None:
+            return status
+    return None
+
+
 def parse_json_ld(html: str) -> StockResult | None:
     """Extract a StockResult from schema.org Product/Offer JSON-LD blocks."""
     tree = HTMLParser(html)
@@ -238,6 +258,9 @@ def detect_stock(html: str, *, page_title: str | None = None) -> StockResult:
         return jsonld
 
     tree = HTMLParser(html)
+    # Before the script tags are stripped: microdata lives in ordinary markup,
+    # but reading it first keeps this independent of that cleanup step.
+    microdata = parse_microdata(tree)
     for tag in ("script", "style", "noscript"):
         for node in tree.css(tag):
             node.decompose()
@@ -250,8 +273,13 @@ def detect_stock(html: str, *, page_title: str | None = None) -> StockResult:
     has_buy_button = find_buy_button(tree)
     price = extract_price_from_text(text_lower)
 
+    # Structured markup beats phrase matching, but a live "add to cart" button
+    # beats stale markup — shops forget to update the itemprop far more often
+    # than they leave a working buy button on a sold-out article.
     if has_buy_button and not sold_out:
         return StockResult(status=StockStatus.IN_STOCK, price=price, title=title, note="buy-button")
+    if microdata is not None and not sold_out:
+        return StockResult(status=microdata, price=price, title=title, note="microdata")
     if sold_out:
         return StockResult(
             status=StockStatus.OUT_OF_STOCK,

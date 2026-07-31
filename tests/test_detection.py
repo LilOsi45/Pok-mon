@@ -84,3 +84,58 @@ class TestHeuristics:
         # JSON-LD says InStock even though the page shows a sold-out banner elsewhere
         html = load_fixture("jsonld_instock.html").replace("</body>", "<p>ausverkauft</p></body>")
         assert detect_stock(html).status == StockStatus.IN_STOCK
+
+
+class TestMicrodataAvailability:
+    """elbenwald.de: 509 KB Seite, Preis 69,95 EUR gelesen — Urteil "no signal".
+
+    The shop marks availability up as HTML attributes (Shopware microdata)
+    instead of a JSON-LD Offer. Without reading those, the watch could never
+    report stock either way, which is an alarm that can never fire.
+    """
+
+    SHOPWARE = """
+    <html lang="de-DE" itemscope itemtype="https://schema.org/WebPage"><body>
+      <div itemscope itemtype="https://schema.org/Product">
+        <meta itemprop="name" content="Pokémon 30 Jahre Top-Trainer-Box">
+        <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+          <meta itemprop="price" content="69.95">
+          <link itemprop="availability" href="https://schema.org/InStock">
+        </div>
+      </div>
+    </body></html>
+    """
+
+    def test_in_stock_microdata_is_read(self):
+        from app.monitor.detection import detect_stock
+
+        result = detect_stock(self.SHOPWARE)
+        assert result.status is StockStatus.IN_STOCK
+        assert result.note == "microdata"
+
+    def test_out_of_stock_microdata_is_read(self):
+        from app.monitor.detection import detect_stock
+
+        html = self.SHOPWARE.replace("InStock", "OutOfStock")
+        assert detect_stock(html).status is StockStatus.OUT_OF_STOCK
+
+    def test_a_sold_out_phrase_beats_stale_markup(self):
+        """Shops forget to update the itemprop far more often than they leave
+        the words "ausverkauft" on a buyable article."""
+        from app.monitor.detection import detect_stock
+
+        html = self.SHOPWARE.replace("</body>", "<p>Leider ausverkauft</p></body>")
+        assert detect_stock(html).status is StockStatus.OUT_OF_STOCK
+
+    def test_the_page_type_itemtype_is_not_mistaken_for_availability(self):
+        from selectolax.parser import HTMLParser
+
+        from app.monitor.detection import parse_microdata
+
+        html = '<html itemscope itemtype="https://schema.org/WebPage"><body>x</body></html>'
+        assert parse_microdata(HTMLParser(html)) is None
+
+    def test_no_markup_still_yields_no_signal(self):
+        from app.monitor.detection import detect_stock
+
+        assert detect_stock("<html><body>Irgendwas</body></html>").status is StockStatus.UNKNOWN
