@@ -196,6 +196,10 @@ async def list_watches(needle: str | None = None) -> None:
     Without this the tool needed an id the operator had to look up first, and a
     placeholder like <ID> or NEUE_ID in an instruction gets pasted literally —
     it happened twice.
+
+    A search also checks the first match. "All the watches on this shop are
+    broken" is one question, and answering it should not need a second command
+    with a number copied out of the first one's output.
     """
     from sqlalchemy import select
 
@@ -212,7 +216,15 @@ async def list_watches(needle: str | None = None) -> None:
         state = "" if w.enabled else "  (aus)"
         print(f"{w.id:>4}  {w.label[:32]:32}  {w.adapter or '(automatisch)'}{state}")
     print()
-    print("Prüfen mit:  python -m app.watch_debug <ID>")
+    if not needle:
+        print("Prüfen mit:  python -m app.watch_debug <ID>")
+        return
+    first = watches[0]
+    print(f"Ich prüfe stellvertretend die erste ({first.id}):")
+    print()
+    await debug_watch(first.id)
+    if len(watches) > 1:
+        print(f"\nDie anderen {len(watches) - 1} laufen über denselben Shop — gleiche Ursache.")
 
 
 async def _run(target: int | str | None, times: int) -> None:

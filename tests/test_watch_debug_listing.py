@@ -18,6 +18,18 @@ LONG_REASON = (
 )
 
 
+def _no_fetch(monkeypatch):
+    """A search now also checks the first match, which would hit the network."""
+    checked: list[int] = []
+
+    async def fake(watch_id: int) -> None:
+        checked.append(watch_id)
+        print(f"[Prüfung von Watch {watch_id}]")
+
+    monkeypatch.setattr("app.watch_debug.debug_watch", fake)
+    return checked
+
+
 def _watch(**kw) -> Watch:
     return Watch(
         game=Game.POKEMON,
@@ -47,6 +59,7 @@ class TestListing:
 
         await self._seed(session)
         monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        _no_fetch(monkeypatch)
 
         await watch_debug.list_watches()
 
@@ -59,6 +72,7 @@ class TestListing:
 
         await self._seed(session)
         monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        _no_fetch(monkeypatch)
 
         await watch_debug.list_watches("queue")
 
@@ -71,6 +85,7 @@ class TestListing:
 
         await self._seed(session)
         monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        _no_fetch(monkeypatch)
 
         await watch_debug.list_watches("pokemoncenter")
 
@@ -81,6 +96,7 @@ class TestListing:
 
         await self._seed(session)
         monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        _no_fetch(monkeypatch)
 
         await watch_debug.list_watches("alte")
 
@@ -91,6 +107,7 @@ class TestListing:
 
         await self._seed(session)
         monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        _no_fetch(monkeypatch)
 
         await watch_debug.list_watches("gibtsnicht")
 
@@ -166,6 +183,52 @@ class _Flaky:
         from app.monitor.base import StockResult
 
         return StockResult(status=StockStatus.OUT_OF_STOCK, note="idle")
+
+
+@pytest.mark.asyncio
+class TestSearchAlsoChecks:
+    """ "All the watches on this shop are broken" is one question.
+
+    Answering it used to take two commands, the second one needing a number
+    copied out of the first one's output — the exact step that produced three
+    literally-pasted placeholders in this project.
+    """
+
+    async def _seed(self, session):
+        session.add_all(
+            [
+                _watch(label="Fantasyworld ETB", url="https://www.fantasyworld.be/etb"),
+                _watch(label="Fantasyworld TTB", url="https://www.fantasyworld.be/ttb"),
+                _watch(label="Anderer Shop", url="https://shop.de/products/x"),
+            ]
+        )
+        await session.commit()
+
+    async def test_a_search_checks_the_first_match(self, session, capsys, monkeypatch):
+        from app import watch_debug
+
+        await self._seed(session)
+        monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        checked = _no_fetch(monkeypatch)
+
+        await watch_debug.list_watches("fantasyworld")
+
+        assert len(checked) == 1
+        out = capsys.readouterr().out
+        assert "Die anderen 1" in out
+        assert "Anderer Shop" not in out
+
+    async def test_listing_everything_checks_nothing(self, session, capsys, monkeypatch):
+        """Without a search term this is an overview — 49 live fetches is not."""
+        from app import watch_debug
+
+        await self._seed(session)
+        monkeypatch.setattr("app.watch_debug.get_sessionmaker", lambda: lambda: _Reuse(session))
+        checked = _no_fetch(monkeypatch)
+
+        await watch_debug.list_watches()
+
+        assert checked == []
 
 
 class _Reuse:
