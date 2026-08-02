@@ -398,3 +398,61 @@ class TestUrlNormalisation:
 
         config.get_settings.cache_clear()
         assert proxy.configured() is False
+
+
+class TestPendingRefusalsAreVisible:
+    """ "Nichts läuft über den Proxy — kein Shop hat uns abgewiesen."
+
+    That line was printed while fantasyworld.be was answering 429 to three
+    watches. Both halves were wrong in a way that matters: refusals had been
+    counted, they just had not reached the escalation threshold yet, and the
+    counter lives in memory so every deploy resets it. Without that on screen
+    there is no way to tell "the shop is fine" from "the switch has not tripped
+    yet".
+    """
+
+    def _report(self, monkeypatch, refusals):
+        import app.config as config
+        from app import proxy
+
+        monkeypatch.setenv("PROXY_URL", "http://u:p@proxy.example:8000")
+        monkeypatch.setenv("PROXY_MODE", "on-refusal")
+        config.get_settings.cache_clear()
+        proxy.reset()
+        for _ in range(refusals):
+            proxy.note_refusal("fantasyworld.be", "page", was_proxied=False)
+        state = proxy.report()
+        config.get_settings.cache_clear()
+        proxy.reset()
+        return state
+
+    def test_a_counted_refusal_shows_up_before_it_escalates(self, monkeypatch):
+        from app.proxy_report import render
+
+        text = render({"proxy": self._report(monkeypatch, 1)})
+
+        assert "fantasyworld.be/page" in text
+        assert "1x" in text
+        assert "kein Shop hat uns abgewiesen" not in text
+
+    def test_the_reset_on_restart_is_stated(self, monkeypatch):
+        from app.proxy_report import render
+
+        text = render({"proxy": self._report(monkeypatch, 1)})
+
+        assert "Neustart" in text and "PROXY_SHOPS" in text
+
+    def test_an_escalated_shop_is_not_listed_as_pending(self, monkeypatch):
+        from app.proxy_report import render
+
+        state = self._report(monkeypatch, 2)
+        assert state["via_proxy"] == ["fantasyworld.be/page"]
+        assert state["refusals"] == {}
+        assert "noch nicht umgestellt" not in render({"proxy": state})
+
+    def test_a_quiet_setup_still_says_nothing_was_refused(self, monkeypatch):
+        from app.proxy_report import render
+
+        text = render({"proxy": self._report(monkeypatch, 0)})
+
+        assert "kein Shop hat uns abgewiesen" in text

@@ -242,5 +242,14 @@ def report() -> dict:
             "megabytes_left": round(budget_left()[1], 1),
         },
         "via_proxy": sorted(f"{d}/{b}" for d, b in _state.escalated),
+        # Refusals counted but not yet enough to escalate. Without these the
+        # report said "kein Shop hat uns abgewiesen" while fantasyworld.be was
+        # answering 429 — the one fact needed to understand what happens next.
+        "escalate_after": settings.proxy_after_refusals,
+        "refusals": {
+            f"{d}/{b}": n
+            for (d, b), n in sorted(_state.refusals.items())
+            if (d, b) not in _state.escalated
+        },
         "per_shop": per_shop,
     }

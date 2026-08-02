@@ -64,7 +64,20 @@ def render(state: dict) -> str:
         if via:
             out.append("Läuft über den Proxy (alles andere direkt und kostenlos):")
             out.extend(f"  {entry}" for entry in via)
-        else:
+        # A shop can be refusing us right now and still not be listed above: the
+        # switch needs a couple of refusals first. Saying "kein Shop hat uns
+        # abgewiesen" while fantasyworld.be answered 429 hid exactly that.
+        pending = proxy.get("refusals") or {}
+        after = proxy.get("escalate_after", 2)
+        if pending:
+            out.append(f"Abgewiesen, aber noch nicht umgestellt (nötig: {after}x):")
+            out.extend(f"  {entry}  {n}x" for entry, n in pending.items())
+            out.append(
+                "Der Zähler steht nur im Arbeitsspeicher — jeder Neustart setzt ihn\n"
+                "zurück. Einen Shop, der dauerhaft blockt, besser fest eintragen:\n"
+                "PROXY_SHOPS in der .env."
+            )
+        elif not via:
             out.append("Nichts läuft über den Proxy — kein Shop hat uns abgewiesen.")
     out.append("")
 
