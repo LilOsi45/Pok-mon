@@ -497,3 +497,52 @@ class TestTheRefusalNamesTheRoute:
             raise AssertionError("expected RateLimited")
         fetchers._domain_blocked_until.clear()
         fetchers._domain_penalty.clear()
+
+
+class TestPinnedShopsAreReported:
+    """PROXY_SHOPS was set and the shop still answered "429 (direkt)".
+
+    Two very different causes look identical from the outside: the line never
+    reached the container, or it did and the shop refuses the proxy too. The
+    app has already parsed the value — printing it removes the guesswork.
+    """
+
+    def _state(self, monkeypatch, value: str):
+        import app.config as config
+        from app import proxy
+
+        monkeypatch.setenv("PROXY_URL", "http://u:p@proxy.example:8000")
+        monkeypatch.setenv("PROXY_SHOPS", value)
+        config.get_settings.cache_clear()
+        proxy.reset()
+        state = proxy.report()
+        config.get_settings.cache_clear()
+        proxy.reset()
+        return state
+
+    def test_the_parsed_hosts_are_listed(self, monkeypatch):
+        from app.proxy_report import render
+
+        state = self._state(monkeypatch, "www.fantasyworld.be, geeksheaven.de")
+        assert state["pinned"] == ["fantasyworld.be", "geeksheaven.de"]
+        assert "fantasyworld.be" in render({"proxy": state})
+
+    def test_an_empty_setting_says_keiner(self, monkeypatch):
+        from app.proxy_report import render
+
+        text = render({"proxy": self._state(monkeypatch, "")})
+        assert "PROXY_SHOPS): keiner" in text
+
+    def test_a_pinned_shop_routes_through_the_proxy(self, monkeypatch):
+        import app.config as config
+        from app import proxy
+
+        monkeypatch.setenv("PROXY_URL", "http://u:p@proxy.example:8000")
+        monkeypatch.setenv("PROXY_MODE", "on-refusal")
+        monkeypatch.setenv("PROXY_SHOPS", "fantasyworld.be")
+        config.get_settings.cache_clear()
+        proxy.reset()
+        assert proxy.routes_via_proxy("fantasyworld.be", "page") is True
+        assert proxy.routes_via_proxy("anderer-shop.de", "page") is False
+        config.get_settings.cache_clear()
+        proxy.reset()

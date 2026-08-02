@@ -129,13 +129,22 @@ def configured() -> bool:
     return bool(url())
 
 
-def _always(domain: str) -> bool:
-    """Shops the operator pinned to the proxy in .env."""
+def pinned_shops() -> set[str]:
+    """Shops the operator pinned to the proxy in .env, as the app reads them.
+
+    Reported rather than only used: a shop kept answering 429 "direkt" after
+    PROXY_SHOPS was supposedly set, and nothing on screen distinguished "the
+    line never arrived" from "the line arrived and the proxy is blocked too".
+    Guessing about a config value the app has already parsed is avoidable.
+    """
     listed = get_settings().proxy_shops.replace(" ", "")
     if not listed:
-        return False
-    wanted = {host.lower().removeprefix("www.") for host in listed.split(",") if host}
-    return domain in wanted
+        return set()
+    return {host.lower().removeprefix("www.") for host in listed.split(",") if host}
+
+
+def _always(domain: str) -> bool:
+    return domain in pinned_shops()
 
 
 def totals() -> Usage:
@@ -246,6 +255,7 @@ def report() -> dict:
         # report said "kein Shop hat uns abgewiesen" while fantasyworld.be was
         # answering 429 — the one fact needed to understand what happens next.
         "escalate_after": settings.proxy_after_refusals,
+        "pinned": sorted(pinned_shops()),
         "refusals": {
             f"{d}/{b}": n
             for (d, b), n in sorted(_state.refusals.items())

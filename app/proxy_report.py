@@ -52,6 +52,13 @@ def render(state: dict) -> str:
 
     # In "always" mode nothing is ever *escalated*, so listing escalations alone
     # would report "nothing uses the proxy" while every request goes through it.
+    # What the app actually parsed out of PROXY_SHOPS. Printed even when empty:
+    # "keiner" is the answer that tells you the .env line never arrived, which
+    # is otherwise indistinguishable from the shop blocking the proxy as well.
+    pinned = proxy.get("pinned") or []
+    out.append(f"Fest auf den Proxy gesetzt (PROXY_SHOPS): {', '.join(pinned) or 'keiner'}")
+    out.append("")
+
     if proxy.get("mode") == "always":
         out.append("Modus: alle Shops laufen über den Proxy.")
         if not today.get("requests"):
