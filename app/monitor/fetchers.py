@@ -138,7 +138,8 @@ def _refuse_if_cooling(domain: str, bucket: str, route: str) -> None:
     remaining = cooldown_remaining(domain, bucket, route)
     if remaining > 0:
         label = "Katalog" if bucket == CATALOG_BUCKET else "Shop"
-        raise RateLimited(f"{domain} drosselt uns ({label}) — Pause noch {remaining:.0f}s")
+        how = "über den Proxy" if route == PROXY_ROUTE else "direkt"
+        raise RateLimited(f"{domain} drosselt uns ({label}, {how}) — Pause noch {remaining:.0f}s")
 
 
 BASE_HEADERS = {
@@ -362,15 +363,25 @@ async def fetch_httpx(
                 # and let the scheduler come back once the shop has cooled off.
                 wait = note_refusal(domain, _retry_after_of(page), bucket, route)
                 escalated = proxy.note_refusal(domain, bucket, was_proxied=via_proxy)
+                # Naming the route is the whole diagnosis: a refusal on our own
+                # IP is solved by a proxy, the same refusal *through* the proxy
+                # says the shop blocks residential addresses too and no amount
+                # of retrying or waiting will change it. The message left that
+                # out, so a shop pinned to the proxy looked exactly like one
+                # that had never been routed there.
+                how = "über den Proxy" if via_proxy else "direkt"
                 log.warning(
-                    "HTTP %d from %s (%s) — Pause %.0fs%s",
+                    "HTTP %d from %s (%s, %s) — Pause %.0fs%s",
                     page.status_code,
                     domain,
                     bucket,
+                    how,
                     wait,
                     ", ab jetzt über den Proxy" if escalated else "",
                 )
-                raise RateLimited(f"{domain} antwortet {page.status_code} — Pause {wait:.0f}s")
+                raise RateLimited(
+                    f"{domain} antwortet {page.status_code} ({how}) — Pause {wait:.0f}s"
+                )
             note_success(domain, bucket, route)
             proxy.note_success(domain, bucket, _wire_bytes(page), was_proxied=via_proxy)
             return page

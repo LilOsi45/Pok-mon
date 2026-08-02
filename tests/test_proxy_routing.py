@@ -456,3 +456,44 @@ class TestPendingRefusalsAreVisible:
         text = render({"proxy": self._report(monkeypatch, 0)})
 
         assert "kein Shop hat uns abgewiesen" in text
+
+
+class TestTheRefusalNamesTheRoute:
+    """A 429 direct and a 429 through the proxy need opposite conclusions.
+
+    fantasyworld.be answered 429 both before and after being pinned to the
+    proxy, and the message read identically either time — so there was no way
+    to tell "try a proxy" from "a proxy will not help, the shop blocks
+    residential addresses too".
+    """
+
+    def test_a_direct_refusal_says_direct(self, monkeypatch):
+        from app.monitor import fetchers
+
+        fetchers.reset_cooldowns() if hasattr(fetchers, "reset_cooldowns") else None
+        fetchers.note_refusal("fantasyworld.be", 60, fetchers.PAGE_BUCKET, fetchers.DIRECT_ROUTE)
+        try:
+            fetchers._refuse_if_cooling(
+                "fantasyworld.be", fetchers.PAGE_BUCKET, fetchers.DIRECT_ROUTE
+            )
+        except fetchers.RateLimited as exc:
+            assert "direkt" in str(exc)
+        else:
+            raise AssertionError("expected RateLimited")
+        fetchers._domain_blocked_until.clear()
+        fetchers._domain_penalty.clear()
+
+    def test_a_proxied_refusal_says_so(self, monkeypatch):
+        from app.monitor import fetchers
+
+        fetchers.note_refusal("fantasyworld.be", 60, fetchers.PAGE_BUCKET, fetchers.PROXY_ROUTE)
+        try:
+            fetchers._refuse_if_cooling(
+                "fantasyworld.be", fetchers.PAGE_BUCKET, fetchers.PROXY_ROUTE
+            )
+        except fetchers.RateLimited as exc:
+            assert "über den Proxy" in str(exc)
+        else:
+            raise AssertionError("expected RateLimited")
+        fetchers._domain_blocked_until.clear()
+        fetchers._domain_penalty.clear()
