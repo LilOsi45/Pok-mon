@@ -269,3 +269,38 @@ class TestAdapterIntegration:
             page, _ = await GenericAdapter().check(f"{SHOP}/products/x")
         assert page.fetched_via != "shop-catalog"
         config.get_settings.cache_clear()
+
+
+class TestTheFailureReasonSurvives:
+    """ "Katalog nicht erreichbar (Abruf fehlgeschlagen (FetchError))".
+
+    That text reached a Discord alert naming four watches and not one useful
+    fact: no shop, no status code, no cause. Only the exception's class name was
+    kept, and the message — which said what actually happened — was dropped.
+    """
+
+    def test_the_message_is_kept_not_just_the_class(self, monkeypatch):
+        import asyncio
+
+        from app.monitor import catalog, fetchers
+
+        async def boom(*_a, **_kw):
+            raise fetchers.FetchError("HTTP 429 von shop.de (page, direkt) — Pause 60s")
+
+        monkeypatch.setattr(fetchers, "fetch_httpx", boom)
+        loaded = asyncio.run(catalog._load("https://shop.de", None))
+
+        assert "429" in loaded.reason
+        assert "Pause 60s" in loaded.reason
+        assert loaded.transient is True
+
+    def test_a_silent_exception_still_names_its_type(self, monkeypatch):
+        import asyncio
+
+        from app.monitor import catalog, fetchers
+
+        async def boom(*_a, **_kw):
+            raise fetchers.FetchError("")
+
+        monkeypatch.setattr(fetchers, "fetch_httpx", boom)
+        assert "FetchError" in asyncio.run(catalog._load("https://shop.de", None)).reason

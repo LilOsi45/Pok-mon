@@ -114,10 +114,14 @@ class TestAlarm:
         assert "S0" in event.message
         assert "Fehler 0" in event.message
 
-    async def test_it_is_priority_so_quiet_hours_cannot_swallow_it(self, session):
+    async def test_it_does_not_ping_everyone(self, session):
+        """Corrected: this used to be priority=True, and a "a shop is throttling
+        us" notice arrived as @everyone at 10:19. Sharing the ping that means
+        "buy now" with maintenance news is how an alert channel stops being
+        read — the failure this watchdog exists to prevent."""
         await self._broken(session)
         event = await watchdog.build_alarm(session)
-        assert event.priority is True
+        assert event.priority is False
 
     async def test_it_is_routed_widely(self, session):
         """An alarm no channel receives is exactly how the drop was missed."""

@@ -100,7 +100,12 @@ async def build_alarm(session: AsyncSession) -> Event | None:
         # Deliberately broad: an alarm that no channel receives is worthless,
         # and that is exactly how the missed drop stayed invisible.
         routes=["system:alarm", "system:heartbeat", "news:*"],
-        priority=True,
+        # No @everyone. This is maintenance, not a drop: a broken watch is worth
+        # reading at breakfast, not worth pulling everyone out of whatever they
+        # are doing. Sharing the ping that means "buy now" with the one that
+        # means "a shop is throttling us" is how an alert channel stops being
+        # read — the exact failure this watchdog exists to prevent.
+        priority=False,
     )
 
 

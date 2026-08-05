@@ -161,7 +161,12 @@ async def _load(base: str, previous: _Entry | None = None) -> _Loaded:
         return _Loaded(None, str(exc), True)
     except Exception as exc:
         log.info("catalog fetch failed for %s: %s", base, exc)
-        return _Loaded(None, f"Abruf fehlgeschlagen ({type(exc).__name__})", True)
+        # The message, not just the class name. "Abruf fehlgeschlagen
+        # (FetchError)" travelled all the way into a Discord alert and named no
+        # shop, no status and no cause — the fourth time in this project that a
+        # swallowed reason sent the diagnosis somewhere else entirely.
+        detail = str(exc).strip() or type(exc).__name__
+        return _Loaded(None, f"Abruf fehlgeschlagen: {detail[:200]}", True)
 
     headers = {k.lower(): v for k, v in (page.headers or {}).items()}
     if page.status_code == 304 and previous is not None:
