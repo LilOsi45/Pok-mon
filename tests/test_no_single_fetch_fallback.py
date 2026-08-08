@@ -122,7 +122,12 @@ class TestGenericAdapter:
         assert result.status == StockStatus.IN_STOCK
 
     async def test_a_product_missing_from_a_working_catalog_may_be_fetched(self):
-        """A store with more than 250 products must not lose its extra watches."""
+        """A store with more than 250 products must not lose its extra watches.
+
+        The shop's product JSON is tried first now (it carries the variant id
+        the add-to-cart link needs); this pins the case where that endpoint is
+        not served, so the HTML fetch still has to happen.
+        """
         html = PageResult(
             url=f"{SHOP}/products/spaet",
             final_url=f"{SHOP}/products/spaet",
@@ -131,6 +136,7 @@ class TestGenericAdapter:
         )
         with (
             patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=_page(CATALOG))),
+            patch.object(GenericAdapter, "_product_json", AsyncMock(return_value=None)),
             patch.object(GenericAdapter, "fetch", AsyncMock(return_value=html)) as single,
         ):
             await GenericAdapter().check(f"{SHOP}/products/spaet")
