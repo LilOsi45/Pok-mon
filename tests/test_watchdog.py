@@ -123,11 +123,19 @@ class TestAlarm:
         event = await watchdog.build_alarm(session)
         assert event.priority is False
 
-    async def test_it_is_routed_widely(self, session):
+    async def test_it_reaches_the_system_channels(self, session):
         """An alarm no channel receives is exactly how the drop was missed."""
         await self._broken(session)
         event = await watchdog.build_alarm(session)
-        assert len(event.routes) > 1
+        assert "system:alarm" in event.routes and "system:heartbeat" in event.routes
+
+    async def test_it_stays_out_of_the_news_channel(self, session):
+        """news:* was in here as insurance and behaved as noise: the staff
+        notifier already listens on system:*, so every warning was also posted
+        next to the set announcements."""
+        await self._broken(session)
+        event = await watchdog.build_alarm(session)
+        assert not any(route.startswith("news:") for route in event.routes)
 
     async def test_it_does_not_repeat_immediately(self, session):
         await self._broken(session)

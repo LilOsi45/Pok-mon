@@ -106,3 +106,44 @@ class TestRender:
 
     def test_no_notifier_at_all_says_so_plainly(self):
         assert "kein Notifier eingerichtet" in render([], [watch("Irgendeine", ["pc-queue"])], [])
+
+
+class TestAvatarStatus:
+    """The logo disappeared from every ping at once.
+
+    Nothing in the sending code had changed, which leaves the URL — and the
+    usual cause is specific: Discord's own attachment links are signed and
+    expire, so a working avatar silently becomes a 404. The tool has to name
+    that instead of leaving the operator to guess at a .env value.
+    """
+
+    def _status(self, monkeypatch, url: str | None):
+        import app.config as config
+        from app.route_check import avatar_status
+
+        if url is None:
+            monkeypatch.delenv("DISCORD_AVATAR_URL", raising=False)
+        else:
+            monkeypatch.setenv("DISCORD_AVATAR_URL", url)
+        config.get_settings.cache_clear()
+        try:
+            return avatar_status()
+        finally:
+            config.get_settings.cache_clear()
+
+    def test_an_expiring_discord_link_is_called_out(self, monkeypatch):
+        text = self._status(
+            monkeypatch,
+            "https://cdn.discordapp.com/attachments/1/2/logo.png?ex=abc&is=def&hm=123",
+        )
+        assert "ACHTUNG" in text and "ab" in text
+
+    def test_a_permanent_url_is_just_reported(self, monkeypatch):
+        text = self._status(monkeypatch, "https://holo.example/logo.png")
+        assert "holo.example/logo.png" in text
+        assert "ACHTUNG" not in text
+
+    def test_no_url_explains_the_fallback(self, monkeypatch):
+        text = self._status(monkeypatch, "")
+        assert "keines eingestellt" in text
+        assert "DISCORD_AVATAR_URL" in text

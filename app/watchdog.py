@@ -30,6 +30,14 @@ BROKEN_AFTER_SECONDS = 3600.0  # tolerate an hour of trouble before shouting
 REPEAT_AFTER_SECONDS = 6 * 3600.0
 MAX_LISTED = 8
 
+# "news:*" used to be in here as insurance against an alarm nobody receives —
+# the failure that hid the missed drop. It stopped being insurance and became
+# noise: the staff notifier listens on system:*, so every warning also landed in
+# the set-news channel next to actual set announcements. Unroutable events are
+# now logged as errors and stored as failed notifications, and route_check
+# verifies a receiver exists, so the gap is covered properly.
+ALARM_ROUTES: tuple[str, ...] = ("system:alarm", "system:heartbeat")
+
 # key -> monotonic time of the last alert about it
 _alerted: dict[str, float] = {}
 # key -> when it started failing. A single last_error says nothing about how
@@ -97,9 +105,7 @@ async def build_alarm(session: AsyncSession) -> Event | None:
         game=None,
         title="⚠️ Tracker: etwas hängt",
         message="\n".join(lines)[:3900],
-        # Deliberately broad: an alarm that no channel receives is worthless,
-        # and that is exactly how the missed drop stayed invisible.
-        routes=["system:alarm", "system:heartbeat", "news:*"],
+        routes=list(ALARM_ROUTES),
         # No @everyone. This is maintenance, not a drop: a broken watch is worth
         # reading at breakfast, not worth pulling everyone out of whatever they
         # are doing. Sharing the ping that means "buy now" with the one that
