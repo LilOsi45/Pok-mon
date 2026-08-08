@@ -136,7 +136,27 @@ class TestAvatarStatus:
             monkeypatch,
             "https://cdn.discordapp.com/attachments/1/2/logo.png?ex=abc&is=def&hm=123",
         )
-        assert "ACHTUNG" in text and "ab" in text
+        assert "ACHTUNG" in text and "laufen nach kurzer Zeit ab" in text
+
+    def test_plain_http_is_the_first_thing_named(self, monkeypatch):
+        """The live setting was http://188.245.48.200:8000/static/img/… — Discord
+        fetches the image itself and drops non-https without a word."""
+        from app.route_check import avatar_problem
+
+        problem = avatar_problem("http://188.245.48.200:8000/static/img/icon.png")
+        assert problem and "https" in problem
+
+    def test_a_bare_ip_is_named(self, monkeypatch):
+        from app.route_check import avatar_problem
+
+        problem = avatar_problem("https://188.245.48.200/static/img/icon.png")
+        assert problem and "IP-Adresse" in problem
+
+    def test_an_application_port_is_named(self, monkeypatch):
+        from app.route_check import avatar_problem
+
+        problem = avatar_problem("https://tracker.example.de:8000/static/img/icon.png")
+        assert problem and "8000" in problem
 
     def test_a_permanent_url_is_just_reported(self, monkeypatch):
         text = self._status(monkeypatch, "https://holo.example/logo.png")

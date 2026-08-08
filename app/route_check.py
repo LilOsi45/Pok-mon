@@ -15,6 +15,8 @@ Reads only the database and config.yaml — it contacts no shop and sends nothin
 from __future__ import annotations
 
 import asyncio
+import re
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
@@ -49,29 +51,57 @@ def receivers(notifiers: list[Notifier], routes: list[str]) -> list[str]:
     return [n.name for n in notifiers if n.matches(probe)]
 
 
-def avatar_status() -> str:
-    """What picture the pings carry — and why it may have stopped showing.
+def avatar_problem(url: str) -> str | None:
+    """Why Discord would show no picture for this URL.
 
-    The logo vanished from every ping at once. Nothing in the sending code
-    changed, so the URL is the suspect, and the usual reason is specific:
-    Discord's own CDN links for uploaded attachments are signed and expire
-    (?ex=…&is=…&hm=…). One works for a while and then silently 404s, which looks
-    exactly like the bot losing its picture.
+    The logo vanished from every ping at once and nothing in the sending code
+    had changed, so the URL was the suspect. Discord fetches it from its own
+    servers, which rules out more than it looks like:
+
+      * plain http is dropped without comment — Discord requires https;
+      * a bare IP with an application port is usually only reachable inside the
+        network or behind the reverse proxy, never from Discord;
+      * its own attachment links are signed and expire (?ex=…&hm=…), so an
+        avatar that worked for days silently starts 404ing.
+
+    All three fail the same way: no error anywhere, just no picture.
     """
-    settings = get_settings()
-    url = (settings.discord_avatar_url or "").strip()
+    parts = urlsplit(url)
+    if parts.scheme != "https":
+        return (
+            "Discord lädt das Bild selbst und akzeptiert nur https — bei http\n"
+            "  wird es kommentarlos weggelassen. Genau das passiert hier."
+        )
+    if re.fullmatch(r"[\d.]+(:\d+)?", parts.netloc):
+        return (
+            "Das ist eine nackte IP-Adresse. Discord muss die aus dem Internet\n"
+            "  erreichen können — nimm die Adresse, unter der du das Dashboard im\n"
+            "  Browser öffnest."
+        )
+    if parts.port not in (None, 443):
+        return (
+            f"Port {parts.port} ist nicht der normale https-Port. Von außen ist der\n"
+            "  meist zu — nimm die Adresse, unter der du das Dashboard öffnest."
+        )
+    if "cdn.discordapp.com" in parts.netloc and ("ex=" in parts.query or "hm=" in parts.query):
+        return (
+            "Das ist ein Discord-Anhang-Link. Die laufen nach kurzer Zeit ab und\n"
+            "  liefern dann nichts mehr — das Bild woanders dauerhaft ablegen."
+        )
+    return None
+
+
+def avatar_status() -> str:
+    """The picture the pings carry, and what is wrong with it."""
+    url = (get_settings().discord_avatar_url or "").strip()
     if not url:
         return (
             "Bild der Pings: keines eingestellt — Discord zeigt das Bild des Webhooks.\n"
             "  Eigenes Logo: DISCORD_AVATAR_URL in der .env auf eine dauerhafte Bild-URL setzen."
         )
     line = f"Bild der Pings: {url[:90]}"
-    if "cdn.discordapp.com" in url and ("ex=" in url or "hm=" in url):
-        line += (
-            "\n  ACHTUNG: Das ist ein Discord-Anhang-Link. Die laufen nach kurzer Zeit ab\n"
-            "  und liefern dann nichts mehr — genau so verschwindet das Logo. Das Bild\n"
-            "  woanders dauerhaft ablegen und die URL dort eintragen."
-        )
+    if problem := avatar_problem(url):
+        line += f"\n  ACHTUNG: {problem}"
     return line
 
 
