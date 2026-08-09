@@ -106,18 +106,34 @@ class TestMicrodataAvailability:
     </body></html>
     """
 
-    def test_in_stock_microdata_is_read(self):
+    def test_in_stock_markup_without_a_buy_button_is_not_a_drop(self):
+        """Corrected: this used to report IN_STOCK and pinged elbenwald.de over
+        and over for a product that could not be ordered.
+
+        This branch is only reached when no buy button was found, so InStock
+        here means "the markup claims availability and we found no way to buy
+        it". Shopware pages also carry Offer markup for cross-sold products, and
+        shops leave the itemprop stale far more often than they leave a working
+        buy button on a sold-out article."""
         from app.monitor.detection import detect_stock
 
-        result = detect_stock(self.SHOPWARE)
-        assert result.status is StockStatus.IN_STOCK
-        assert result.note == "microdata"
+        assert detect_stock(self.SHOPWARE).status is StockStatus.UNKNOWN
+
+    def test_in_stock_markup_next_to_a_real_buy_button_still_sells(self):
+        from app.monitor.detection import detect_stock
+
+        html = self.SHOPWARE.replace("</body>", "<button>In den Warenkorb</button></body>")
+        assert detect_stock(html).status is StockStatus.IN_STOCK
 
     def test_out_of_stock_microdata_is_read(self):
+        """The safe half: it agrees with the missing button and only ever
+        suppresses a ping."""
         from app.monitor.detection import detect_stock
 
         html = self.SHOPWARE.replace("InStock", "OutOfStock")
-        assert detect_stock(html).status is StockStatus.OUT_OF_STOCK
+        result = detect_stock(html)
+        assert result.status is StockStatus.OUT_OF_STOCK
+        assert "microdata" in (result.note or "")
 
     def test_a_sold_out_phrase_beats_stale_markup(self):
         """Shops forget to update the itemprop far more often than they leave
@@ -125,6 +141,14 @@ class TestMicrodataAvailability:
         from app.monitor.detection import detect_stock
 
         html = self.SHOPWARE.replace("</body>", "<p>Leider ausverkauft</p></body>")
+        assert detect_stock(html).status is StockStatus.OUT_OF_STOCK
+
+    def test_a_sold_out_phrase_wins_over_a_buy_button_too(self):
+        from app.monitor.detection import detect_stock
+
+        html = self.SHOPWARE.replace(
+            "</body>", "<p>Leider ausverkauft</p><button>In den Warenkorb</button></body>"
+        )
         assert detect_stock(html).status is StockStatus.OUT_OF_STOCK
 
     def test_the_page_type_itemtype_is_not_mistaken_for_availability(self):

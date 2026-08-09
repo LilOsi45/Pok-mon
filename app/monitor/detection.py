@@ -273,13 +273,22 @@ def detect_stock(html: str, *, page_title: str | None = None) -> StockResult:
     has_buy_button = find_buy_button(tree)
     price = extract_price_from_text(text_lower)
 
-    # Structured markup beats phrase matching, but a live "add to cart" button
-    # beats stale markup — shops forget to update the itemprop far more often
-    # than they leave a working buy button on a sold-out article.
     if has_buy_button and not sold_out:
         return StockResult(status=StockStatus.IN_STOCK, price=price, title=title, note="buy-button")
-    if microdata is not None and not sold_out:
-        return StockResult(status=microdata, price=price, title=title, note="microdata")
+    # Microdata may say "sold out", never "buyable".
+    #
+    # This branch is only reached when no buy button was found — so an InStock
+    # itemprop here means "the markup claims it is available, but we could not
+    # find any way to buy it". Trusting that produced repeated restock pings for
+    # an elbenwald.de product that could not be ordered: Shopware pages carry
+    # Offer markup for cross-sold products too, and shops leave the itemprop
+    # stale far more often than they leave a working buy button on a sold-out
+    # article. OutOfStock is the safe half — it agrees with the missing button
+    # and only ever suppresses a ping.
+    if microdata is StockStatus.OUT_OF_STOCK:
+        return StockResult(
+            status=StockStatus.OUT_OF_STOCK, price=price, title=title, note="microdata: sold out"
+        )
     if sold_out:
         return StockResult(
             status=StockStatus.OUT_OF_STOCK,
