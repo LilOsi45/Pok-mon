@@ -65,6 +65,20 @@ def buttons(tree: HTMLParser) -> list[tuple[str, str]]:
     return found[:MAX_BUTTONS]
 
 
+def _fetch_line(page) -> list[str]:
+    """Status, landing URL and route — the facts that tell a 404 page, a consent
+    wall and a JavaScript shell apart. Leaving them out cost a round of
+    diagnosis: 40 KB with no buttons looked like "JS-rendered" when the same
+    shop had already served 509 KB with a readable price on another page."""
+    lines = [
+        f"HTTP  : {page.status_code}",
+        f"Weg   : {page.fetched_via}",
+    ]
+    if page.final_url != page.url:
+        lines.append(f"Gelandet auf: {page.final_url}")
+    return lines
+
+
 def report(url: str, html: str) -> str:
     tree = HTMLParser(html)
     for tag in ("script", "style", "noscript"):
@@ -109,11 +123,26 @@ async def _run(url: str) -> None:
     from app.monitor import fetchers
 
     try:
-        page = await fetchers.fetch_httpx(url)
-        print(report(url, page.text))
-    except Exception as exc:
-        print(f"Abruf fehlgeschlagen: {type(exc).__name__}: {exc}")
+        try:
+            page = await fetchers.fetch_httpx(url)
+            print("\n".join(_fetch_line(page)))
+            print(report(url, page.text))
+        except Exception as exc:
+            print(f"Normaler Abruf fehlgeschlagen: {type(exc).__name__}: {exc}")
+
+        # Always compare against a real browser. "No buttons" has two very
+        # different causes — the shop builds them with JavaScript, or we never
+        # got the product page at all — and only the comparison separates them.
+        print("\n" + "=" * 64)
+        print("ZUM VERGLEICH: echter Browser (Playwright)\n")
+        try:
+            page = await fetchers.fetch_playwright(url)
+            print("\n".join(_fetch_line(page)))
+            print(report(url, page.text))
+        except Exception as exc:
+            print(f"Browser-Abruf fehlgeschlagen: {type(exc).__name__}: {exc}")
     finally:
+        await fetchers.shutdown_playwright()
         await fetchers.close_client()
 
 

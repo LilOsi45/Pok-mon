@@ -47,3 +47,39 @@ class TestReport:
     def test_a_javascript_page_says_there_are_no_buttons(self):
         text = report("https://shop.de/x", "<html><body><div id='app'></div></body></html>")
         assert "keine gefunden" in text
+
+
+class TestFetchFacts:
+    """40 KB with no buttons looked like "JavaScript" — but the same shop had
+    already served 509 KB with a readable price on another page. Status code,
+    landing URL and route are what tell a 404 page, a consent wall and a real
+    JS shell apart, and the report left all three out."""
+
+    def _page(self, **kw):
+        from app.monitor.base import PageResult
+
+        base = dict(
+            url="https://www.elbenwald.de/x",
+            final_url="https://www.elbenwald.de/x",
+            status_code=200,
+            text="<html></html>",
+            fetched_via="browser-tls",
+        )
+        return PageResult(**{**base, **kw})
+
+    def test_status_and_route_are_shown(self):
+        from app.stock_debug import _fetch_line
+
+        lines = "\n".join(_fetch_line(self._page()))
+        assert "200" in lines and "browser-tls" in lines
+
+    def test_a_redirect_is_named(self):
+        from app.stock_debug import _fetch_line
+
+        lines = "\n".join(_fetch_line(self._page(final_url="https://www.elbenwald.de/404")))
+        assert "Gelandet auf" in lines and "/404" in lines
+
+    def test_no_redirect_stays_quiet(self):
+        from app.stock_debug import _fetch_line
+
+        assert "Gelandet auf" not in "\n".join(_fetch_line(self._page()))
