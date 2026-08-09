@@ -104,7 +104,10 @@ class TestGenericAdapter:
     async def test_a_shop_without_a_catalog_is_still_fetched_singly(self):
         """Not every shop is Shopify — those must keep working."""
         html = PageResult(
-            url=PRODUCT, final_url=PRODUCT, status_code=200, text="<h1>Box</h1>In den Warenkorb"
+            url=PRODUCT,
+            final_url=PRODUCT,
+            status_code=200,
+            text="<h1>Box</h1><button>In den Warenkorb</button>",
         )
         with (
             patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=_page({"no": 1}))),
@@ -132,7 +135,7 @@ class TestGenericAdapter:
             url=f"{SHOP}/products/spaet",
             final_url=f"{SHOP}/products/spaet",
             status_code=200,
-            text="<h1>Spät</h1>ausverkauft",
+            text="<h1>Spät</h1><p>ausverkauft</p>",
         )
         with (
             patch("app.monitor.fetchers.fetch_httpx", AsyncMock(return_value=_page(CATALOG))),
@@ -148,7 +151,7 @@ class TestGenericAdapter:
             url=f"{SHOP}/collections/neu",
             final_url=f"{SHOP}/collections/neu",
             status_code=200,
-            text="<h1>Neu</h1>",
+            text="<h1>Neu</h1><button>In den Warenkorb</button>",
         )
         with patch.object(GenericAdapter, "fetch", AsyncMock(return_value=html)) as single:
             await GenericAdapter().check(f"{SHOP}/collections/neu")
@@ -160,7 +163,7 @@ class TestGenericAdapter:
             url=f"{SHOP}/products/",
             final_url=f"{SHOP}/products/",
             status_code=200,
-            text="<h1>x</h1>",
+            text="<h1>x</h1><button>In den Warenkorb</button>",
         )
         with patch.object(GenericAdapter, "fetch", AsyncMock(return_value=html)) as single:
             await GenericAdapter().check(f"{SHOP}/products/")
