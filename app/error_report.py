@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import timedelta
 from urllib.parse import urlsplit
 
@@ -34,6 +35,16 @@ TOP_REASONS = 6
 REASON_CHARS = 60
 
 
+@dataclass(frozen=True)
+class Row:
+    """One recorded check."""
+
+    shop: str
+    label: str
+    url: str
+    error: str | None
+
+
 def _shop(url: str) -> str:
     return urlsplit(url).netloc.lower().removeprefix("www.") or "?"
 
@@ -44,18 +55,44 @@ def _reason(error: str) -> str:
     return text[:REASON_CHARS] or "(kein Text)"
 
 
-def render(rows: list[tuple[str, str | None]], hours: int) -> str:
-    """rows: (shop, error or None) for every check in the window."""
+DEAD_LINK_SHARE = 0.9  # this much of a watch's checks answering 404 = dead link
+
+
+def dead_links(rows: list[Row]) -> list[tuple[str, str, int]]:
+    """(label, url, checks) for watches whose URL just answers 404.
+
+    Two shops ran at a 100 % failure rate — 2727 requests a day against pages
+    that are gone. That is the largest single number in the report, it earns
+    rate limits on shops we still want, and it is fixed by editing or deleting
+    a watch. Naming them is the difference between a statistic and an action.
+    """
+    per_watch: dict[str, tuple[str, int, int]] = {}
+    for row in rows:
+        label, checks, notfound = per_watch.get(row.url, (row.label, 0, 0))
+        per_watch[row.url] = (label, checks + 1, notfound + (1 if _is_404(row.error) else 0))
+    dead = [
+        (label, url, checks)
+        for url, (label, checks, notfound) in per_watch.items()
+        if checks and notfound / checks >= DEAD_LINK_SHARE
+    ]
+    return sorted(dead, key=lambda item: -item[2])
+
+
+def _is_404(error: str | None) -> bool:
+    return bool(error) and "404" in error
+
+
+def render(rows: list[Row], hours: int) -> str:
     total = len(rows)
     if not total:
         return f"Keine Prüfungen in den letzten {hours} Stunden aufgezeichnet.\n"
 
-    failed = [(shop, err) for shop, err in rows if err]
+    failed = [row for row in rows if row.error]
     per_shop: dict[str, list[int]] = {}
-    for shop, err in rows:
-        counts = per_shop.setdefault(shop, [0, 0])
+    for row in rows:
+        counts = per_shop.setdefault(row.shop, [0, 0])
         counts[0] += 1
-        if err:
+        if row.error:
             counts[1] += 1
 
     out = [
@@ -73,8 +110,19 @@ def render(rows: list[tuple[str, str | None]], hours: int) -> str:
 
     if failed:
         out += ["", "Häufigste Ursachen:"]
-        for reason, n in Counter(_reason(err) for _shop_, err in failed).most_common(TOP_REASONS):
+        for reason, n in Counter(_reason(row.error) for row in failed).most_common(TOP_REASONS):
             out.append(f"  {n:5d}x  {reason}")
+
+    if dead := dead_links(rows):
+        wasted = sum(checks for _l, _u, checks in dead)
+        out += [
+            "",
+            f"TOTE LINKS — {len(dead)} Watches fragen eine Seite ab, die es nicht gibt",
+            f"({wasted} vergebliche Abrufe in {hours} h; das provoziert Sperren bei Shops,",
+            "die wir noch brauchen). Im Dashboard URL korrigieren oder Watch löschen:",
+        ]
+        for label, url, checks in dead[:TOP_SHOPS]:
+            out.append(f"  {checks:5d}x  {label[:28]:28}  {url[:60]}")
 
     quiet = [shop for shop, (_c, e) in per_shop.items() if not e]
     out += ["", f"Ohne einen einzigen Fehler: {len(quiet)} von {len(per_shop)} Shops"]
@@ -85,11 +133,11 @@ async def report(hours: int = DEFAULT_HOURS) -> str:
     since = utcnow() - timedelta(hours=hours)
     async with get_sessionmaker()() as session:
         result = await session.execute(
-            select(Watch.url, StockCheck.error)
+            select(Watch.label, Watch.url, StockCheck.error)
             .join(Watch, Watch.id == StockCheck.watch_id)
             .where(StockCheck.checked_at >= since)
         )
-        rows = [(_shop(url), error) for url, error in result.all()]
+        rows = [Row(_shop(url), label, url, error) for label, url, error in result.all()]
     return render(rows, hours)
 
 

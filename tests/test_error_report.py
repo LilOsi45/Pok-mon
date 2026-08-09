@@ -8,16 +8,20 @@ broken. This is the view that shows where the failures actually come from.
 
 from __future__ import annotations
 
-from app.error_report import _reason, _shop, render
+from app.error_report import Row, _reason, _shop, dead_links, render
 
 WINDOW = 24
 
 
-def rows(*spec: tuple[str, str | None, int]) -> list[tuple[str, str | None]]:
-    out: list[tuple[str, str | None]] = []
+def rows(*spec: tuple[str, str | None, int]) -> list[Row]:
+    out: list[Row] = []
     for shop, error, count in spec:
-        out.extend([(shop, error)] * count)
+        out.extend([Row(shop, f"Watch {shop}", f"https://{shop}/products/x", error)] * count)
     return out
+
+
+def watch_rows(url: str, error: str | None, count: int, label: str = "W") -> list[Row]:
+    return [Row(_shop(url), label, url, error)] * count
 
 
 class TestShopAndReason:
@@ -68,3 +72,35 @@ class TestRender:
 
     def test_an_empty_window_says_so(self):
         assert "Keine Prüfungen" in render([], WINDOW)
+
+
+class TestDeadLinks:
+    """Two shops ran at a 100 % failure rate: 2727 requests a day against pages
+    that are gone. That is the biggest number in the report, it earns rate
+    limits on shops we still need, and it is fixed by editing one watch."""
+
+    def test_a_permanently_404ing_watch_is_named(self):
+        found = dead_links(watch_rows("https://einzigundartig.de/p/weg", "HTTP 404", 700, "Alt"))
+
+        assert found == [("Alt", "https://einzigundartig.de/p/weg", 700)]
+
+    def test_an_occasional_404_is_not_a_dead_link(self):
+        rows_ = watch_rows("https://shop.de/p/x", "HTTP 404", 2) + watch_rows(
+            "https://shop.de/p/x", None, 98
+        )
+        assert dead_links(rows_) == []
+
+    def test_other_failures_are_not_dead_links(self):
+        """A rate-limited shop must not be reported as a wrong URL."""
+        assert dead_links(watch_rows("https://shop.de/p/x", "RateLimited: 429", 500)) == []
+
+    def test_the_report_names_them_with_the_wasted_count(self):
+        text = render(
+            watch_rows("https://einzigundartig.de/p/weg", "HTTP 404", 700, "Alte Watch"), WINDOW
+        )
+        assert "TOTE LINKS" in text
+        assert "Alte Watch" in text
+        assert "700" in text
+
+    def test_a_clean_install_has_no_such_section(self):
+        assert "TOTE LINKS" not in render(rows(("gut.de", None, 10)), WINDOW)
