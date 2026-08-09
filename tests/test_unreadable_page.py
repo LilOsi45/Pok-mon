@@ -84,3 +84,56 @@ class TestTheBaselineSurvives:
         _apply_result(watch, StockResult(status=StockStatus.UNKNOWN, listed=False, note="HTTP 404"))
 
         assert watch.last_status is StockStatus.UNKNOWN
+
+
+@pytest.mark.asyncio
+class TestOneMoreAttempt:
+    """89 % of elbenwald.de's checks landed on a partial page.
+
+    The same URL served 533415 characters with a buy button and a price on one
+    fetch and 40459 with none of it on the next, so the reading that gets
+    thrown away is worth one more request — and only on a check that failed.
+    """
+
+    async def _adapter(self, monkeypatch, pages):
+        from app.monitor.adapters.generic import GenericAdapter
+        from app.monitor.base import PageResult
+
+        monkeypatch.setattr("app.monitor.adapters.generic.RETRY_UNREADABLE_SECONDS", 0)
+        monkeypatch.setattr(
+            "app.monitor.adapters.generic.get_settings",
+            lambda: type("S", (), {"use_shop_catalog": False})(),
+            raising=False,
+        )
+        calls = {"n": 0}
+
+        async def fake_fetch(_self, url):
+            html = pages[min(calls["n"], len(pages) - 1)]
+            calls["n"] += 1
+            return PageResult(url=url, final_url=url, status_code=200, text=html)
+
+        monkeypatch.setattr(GenericAdapter, "fetch", fake_fetch)
+        return GenericAdapter(), calls
+
+    async def test_a_partial_page_is_retried_and_the_good_one_wins(self, monkeypatch):
+        adapter, calls = await self._adapter(monkeypatch, [PARTIAL, FULL])
+
+        _page, result = await adapter.check("https://www.elbenwald.de/x")
+
+        assert calls["n"] == 2
+        assert result.status is StockStatus.IN_STOCK
+
+    async def test_a_readable_page_costs_one_request(self, monkeypatch):
+        adapter, calls = await self._adapter(monkeypatch, [FULL])
+
+        await adapter.check("https://www.elbenwald.de/x")
+
+        assert calls["n"] == 1
+
+    async def test_two_partial_pages_stay_unreadable(self, monkeypatch):
+        adapter, calls = await self._adapter(monkeypatch, [PARTIAL, PARTIAL])
+
+        _page, result = await adapter.check("https://www.elbenwald.de/x")
+
+        assert calls["n"] == 2
+        assert result.readable is False

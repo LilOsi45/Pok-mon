@@ -7,6 +7,7 @@ adapter when a shop needs special handling.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from selectolax.parser import HTMLParser
@@ -15,6 +16,10 @@ from app.monitor.base import PageResult, RetailerAdapter, StockResult
 from app.monitor.detection import detect_stock
 
 log = logging.getLogger(__name__)
+
+# Long enough that a shop trimming its response under load has moved on, short
+# enough to stay well inside the poll interval.
+RETRY_UNREADABLE_SECONDS = 4.0
 
 
 def guard_single_fetch(url: str) -> None:
@@ -83,7 +88,24 @@ class GenericAdapter(RetailerAdapter):
                 page = await self._product_json(url)
                 if page is not None:
                     return page, ShopifyAdapter(self.detection_config).parse(page)
-        return await super().check(url)
+
+        page, result = await super().check(url)
+        if result.readable or page.status_code == 404:
+            return page, result
+        # Nothing on the page said anything about stock. Measured on
+        # elbenwald.de: the same URL served 533415 characters with a buy button
+        # and a price on one fetch and 40459 characters with none of it on the
+        # next, and 89 % of that watch's checks landed on the short version.
+        # One more attempt costs a single request, and only on a check that
+        # would otherwise have been thrown away.
+        log.info("no stock signal on %s — one more attempt", url)
+        await asyncio.sleep(RETRY_UNREADABLE_SECONDS)
+        try:
+            retry_page, retry_result = await super().check(url)
+        except Exception as exc:
+            log.info("retry for %s failed (%s) — keeping the first reading", url, exc)
+            return page, result
+        return (retry_page, retry_result) if retry_result.readable else (page, result)
 
     async def _product_json(self, url: str) -> PageResult | None:
         """The shop's own JSON for one product, or None if it isn't served."""
