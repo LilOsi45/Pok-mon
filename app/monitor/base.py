@@ -53,6 +53,14 @@ class StockResult:
     # Optional adapter-provided notification title (e.g. "Queue ist OFFEN")
     # overriding the generic "Back in stock: <label>" wording.
     alert_title: str | None = None
+    # False when the page yielded no stock signal at all — no structured data,
+    # no buy button, no sold-out phrase, no price. That is the absence of an
+    # answer, not the answer "unknown", and it must not become the baseline a
+    # restock is measured against: elbenwald.de occasionally returns a partial
+    # page (40 KB instead of 533 KB), and recording that as UNKNOWN made the
+    # next complete read look like UNKNOWN -> IN_STOCK, i.e. a restock ping for
+    # a product whose availability had never changed.
+    readable: bool = True
 
 
 class RetailerAdapter(ABC):

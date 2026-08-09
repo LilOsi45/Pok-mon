@@ -298,4 +298,13 @@ def detect_stock(html: str, *, page_title: str | None = None) -> StockResult:
         )
     if price is not None and has_buy_button:
         return StockResult(status=StockStatus.IN_STOCK, price=price, title=title, note="price")
-    return StockResult(status=StockStatus.UNKNOWN, price=price, title=title, note="no signal")
+    return StockResult(
+        status=StockStatus.UNKNOWN,
+        price=price,
+        title=title,
+        note="no signal",
+        # Nothing on the page said anything about stock. A page that reads as
+        # empty is usually one we did not fully receive, so this must not be
+        # treated as a state the watch was in.
+        readable=False,
+    )

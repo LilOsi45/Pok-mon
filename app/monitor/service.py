@@ -63,8 +63,17 @@ def evaluate_transition(watch: Watch, result: StockResult) -> EventType | None:
 
 def _apply_result(watch: Watch, result: StockResult) -> None:
     watch.last_check_at = utcnow()
-    watch.last_status = result.status
-    watch.last_error = None
+    if result.readable:
+        watch.last_status = result.status
+        watch.last_error = None
+    else:
+        # Keep the last status we actually read. Overwriting it with UNKNOWN
+        # meant the next complete page looked like UNKNOWN -> IN_STOCK, which
+        # is a restock: elbenwald.de returns a partial page now and then, and
+        # every one of those armed a ping for a product that had not changed.
+        # Recorded as an error so it stays visible rather than silently
+        # freezing the watch on a stale reading.
+        watch.last_error = "Seite nicht lesbar (kein Signal) — Lagerstand unverändert übernommen"
     if result.listed:
         watch.listing_seen = True
     if result.price is not None:
