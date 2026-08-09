@@ -122,7 +122,12 @@ def render(rows: list[Row], hours: int) -> str:
             "die wir noch brauchen). Im Dashboard URL korrigieren oder Watch löschen:",
         ]
         for label, url, checks in dead[:TOP_SHOPS]:
-            out.append(f"  {checks:5d}x  {label[:28]:28}  {url[:60]}")
+            # Full URL on its own line. The point of this list is that the
+            # operator opens the address to see whether the product moved or is
+            # gone — a URL cut off at 60 characters cannot be opened, and
+            # truncated output has sent the diagnosis the wrong way here before.
+            out.append(f"  {checks:5d}x  {label}")
+            out.append(f"          {url}")
 
     quiet = [shop for shop, (_c, e) in per_shop.items() if not e]
     out += ["", f"Ohne einen einzigen Fehler: {len(quiet)} von {len(per_shop)} Shops"]

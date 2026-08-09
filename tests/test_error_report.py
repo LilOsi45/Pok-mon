@@ -102,5 +102,15 @@ class TestDeadLinks:
         assert "Alte Watch" in text
         assert "700" in text
 
+    def test_the_url_is_printed_in_full(self):
+        """Cut off at 60 characters it cannot be opened, and opening it is the
+        entire point of the list."""
+        url = (
+            "https://www.einzigundartig.de/pokemon-sammelkartenspiel-boosterbundle-"
+            "wachsendes-chaos-de-vorbestellung"
+        )
+        text = render(watch_rows(url, "HTTP 404", 257), WINDOW)
+        assert url in text
+
     def test_a_clean_install_has_no_such_section(self):
         assert "TOTE LINKS" not in render(rows(("gut.de", None, 10)), WINDOW)
