@@ -44,11 +44,19 @@ _alerted: dict[str, float] = {}
 # long it has been that way, and alerting on the first hiccup would train the
 # operator to ignore the alarm.
 _failing_since: dict[str, float] = {}
+# key -> when it last looked healthy. A shop under a 900 s cooldown alternates
+# between failing and passing, and forgetting a watch's alert history on the
+# first successful check re-armed the alarm every couple of hours. The same
+# single watch reported at 01:11, 03:48 and again later, about a shop that
+# refuses us through the proxy too — nothing the operator can act on at night.
+_recovered_at: dict[str, float] = {}
+STABLE_FOR_SECONDS = 2 * 3600.0  # healthy this long before the alarm re-arms
 
 
 def reset_for_tests() -> None:
     _alerted.clear()
     _failing_since.clear()
+    _recovered_at.clear()
 
 
 def _due(key: str) -> bool:
@@ -74,9 +82,18 @@ async def collect_broken(session: AsyncSession) -> list[tuple[str, str, str]]:
 
     now = time.monotonic()
     for key in list(_failing_since):
-        if key not in seen:  # recovered — forget it, including its alert history
+        if key in seen:
+            _recovered_at.pop(key, None)
+            continue
+        # One good check is not a recovery. A shop serving 503 behind a 900 s
+        # cooldown passes now and then, and clearing the history on that first
+        # pass restarted the whole "broken for an hour -> alert" cycle, so the
+        # same unfixable watch pinged again every couple of hours all night.
+        healthy_since = _recovered_at.setdefault(key, now)
+        if now - healthy_since >= STABLE_FOR_SECONDS:
             _failing_since.pop(key, None)
             _alerted.pop(key, None)
+            _recovered_at.pop(key, None)
     broken = []
     for key, (label, error) in seen.items():
         since = _failing_since.setdefault(key, now)

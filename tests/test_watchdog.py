@@ -58,6 +58,12 @@ def _age(seconds: float) -> None:
         watchdog._failing_since[key] = time.monotonic() - seconds
 
 
+def _stable(seconds: float) -> None:
+    """Pretend everything currently healthy has been healthy that long."""
+    for key in watchdog._recovered_at:
+        watchdog._recovered_at[key] = time.monotonic() - seconds
+
+
 @pytest.mark.asyncio
 class TestGracePeriod:
     async def test_a_fresh_failure_does_not_alert_yet(self, session):
@@ -88,7 +94,30 @@ class TestGracePeriod:
         await session.commit()
 
         assert await watchdog.collect_broken(session) == []
+        _stable(watchdog.STABLE_FOR_SECONDS + 1)
+        assert await watchdog.collect_broken(session) == []
         assert watchdog._failing_since == {}
+
+    async def test_one_good_check_is_not_a_recovery(self, session):
+        """A shop under a 900 s cooldown passes now and then. Clearing the
+        history on that first pass restarted the "broken for an hour -> alert"
+        cycle, so the same unfixable watch pinged at 01:11, 03:48 and again."""
+        scan = _scan(label="take-it-shop", last_error="RateLimited: 503 (über den Proxy)")
+        session.add(scan)
+        await session.commit()
+        await watchdog.collect_broken(session)
+        _age(watchdog.BROKEN_AFTER_SECONDS + 1)
+        assert await watchdog.build_alarm(session) is not None
+
+        scan.last_error = None  # one check got through
+        await session.commit()
+        await watchdog.collect_broken(session)
+
+        scan.last_error = "RateLimited: 503 (über den Proxy)"  # and back to failing
+        await session.commit()
+        _age(watchdog.BROKEN_AFTER_SECONDS + 1)
+
+        assert await watchdog.build_alarm(session) is None, "alarm re-armed after one good check"
 
     async def test_a_healthy_install_is_silent(self, session):
         session.add(_watch(label="fine"))
