@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.events import Event
-from app.models import EventType, ProductScan, Watch
+from app.models import EventType, ProductScan, StockCheck, Watch, utcnow
 from app.notify.service import dispatch_event
 
 log = logging.getLogger(__name__)
@@ -64,6 +65,17 @@ def _due(key: str) -> bool:
     return last is None or (time.monotonic() - last) >= REPEAT_AFTER_SECONDS
 
 
+async def _succeeded_recently(session: AsyncSession) -> set[int]:
+    """Watch ids with at least one successful check inside the grace period."""
+    since = utcnow() - timedelta(seconds=BROKEN_AFTER_SECONDS)
+    rows = await session.execute(
+        select(StockCheck.watch_id)
+        .where(StockCheck.checked_at >= since, StockCheck.error.is_(None))
+        .distinct()
+    )
+    return set(rows.scalars().all())
+
+
 async def collect_broken(session: AsyncSession) -> list[tuple[str, str, str]]:
     """(key, label, error) for everything failing longer than the grace period."""
     watches = (await session.execute(select(Watch).where(Watch.enabled.is_(True)))).scalars().all()
@@ -72,9 +84,15 @@ async def collect_broken(session: AsyncSession) -> list[tuple[str, str, str]]:
         .scalars()
         .all()
     )
+    # A watch that succeeded recently is not broken, whatever its last check
+    # said. Sampling "is there an error right now" every 30 minutes reported two
+    # shops as hanging at 05:10 over cooldowns of 100 and 123 seconds — pauses
+    # the throttling already handles, on shops that answer 99 % of the time. The
+    # honest question is when the watch last produced a reading at all.
+    recent = await _succeeded_recently(session)
     seen: dict[str, tuple[str, str]] = {}
     for w in watches:
-        if w.last_error:
+        if w.last_error and w.id not in recent:
             seen[f"watch:{w.id}"] = (f"Watch „{w.label}“", w.last_error)
     for s in scans:
         if s.last_error:

@@ -217,3 +217,57 @@ class TestUnroutableEventsAreVisible:
         assert rows[0].success is False
         assert "kein Notifier" in (rows[0].error or "")
         assert "system:heartbeat" in (rows[0].error or "")
+
+
+@pytest.mark.asyncio
+class TestATransientRefusalIsNotBroken:
+    """Two shops were reported as hanging at 05:10 over cooldowns of 100 and
+    123 seconds — pauses the throttling already handles, on shops that answer
+    99 % of the time. Sampling "is there an error right now" every 30 minutes
+    cannot tell that apart from a shop that has stopped answering. When the
+    watch last produced a reading can."""
+
+    async def _watch_with_history(self, session, *, success_minutes_ago: float | None):
+        from datetime import timedelta
+
+        from app.models import StockCheck, utcnow
+
+        w = _watch(label="2sleeve", last_error="RateLimited: 2sleeve.de drosselt uns — 100s")
+        session.add(w)
+        await session.commit()
+        if success_minutes_ago is not None:
+            session.add(
+                StockCheck(
+                    watch_id=w.id,
+                    checked_at=utcnow() - timedelta(minutes=success_minutes_ago),
+                    error=None,
+                )
+            )
+            await session.commit()
+        return w
+
+    async def test_a_recent_success_means_not_broken(self, session):
+        await self._watch_with_history(session, success_minutes_ago=5)
+
+        await watchdog.collect_broken(session)
+        _age(watchdog.BROKEN_AFTER_SECONDS + 1)
+
+        assert await watchdog.collect_broken(session) == []
+
+    async def test_a_shop_that_stopped_answering_still_alerts(self, session):
+        await self._watch_with_history(session, success_minutes_ago=180)
+
+        await watchdog.collect_broken(session)
+        _age(watchdog.BROKEN_AFTER_SECONDS + 1)
+
+        assert [label for _k, label, _e in await watchdog.collect_broken(session)] == [
+            "Watch „2sleeve“"
+        ]
+
+    async def test_a_watch_that_never_succeeded_still_alerts(self, session):
+        await self._watch_with_history(session, success_minutes_ago=None)
+
+        await watchdog.collect_broken(session)
+        _age(watchdog.BROKEN_AFTER_SECONDS + 1)
+
+        assert await watchdog.collect_broken(session)
