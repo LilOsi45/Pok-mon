@@ -14,14 +14,18 @@ from sqlalchemy import select
 from app.models import Game, StockCheck, Watch, utcnow
 from app.watch_cleanup import CONFIRM, run
 
+DEAD_URL = "https://www.einzigundartig.de/pokemon-sammelkarten-erste-partner-set"
 
-async def _seed(session, *, checks: int = 30, error: str | None = "HTTP 404") -> Watch:
-    watch = Watch(
-        game=Game.POKEMON,
-        label="Pokémon Sammelkarten Erste-Partner",
-        url="https://www.einzigundartig.de/pokemon-sammelkarten-erste-partner-set",
-        enabled=True,
-    )
+
+async def _seed(
+    session,
+    *,
+    checks: int = 30,
+    error: str | None = "HTTP 404",
+    url: str = DEAD_URL,
+    label: str = "Pokémon Sammelkarten Erste-Partner",
+) -> Watch:
+    watch = Watch(game=Game.POKEMON, label=label, url=url, enabled=True)
     session.add(watch)
     await session.commit()
     session.add_all(
@@ -89,3 +93,32 @@ class TestCleanup:
     async def test_it_says_to_restart_afterwards(self, session):
         await _seed(session)
         assert "restart" in await run(confirmed=True)
+
+
+@pytest.mark.asyncio
+class TestDuplicateUrls:
+    """Two watches shared one dead fantasyworld.be address.
+
+    Keying the lookup by URL kept a single id, so the cleanup removed one watch
+    and the other went on spending 1308 requests a day on the same missing
+    page — precisely the waste the command exists to end.
+    """
+
+    async def test_both_watches_on_one_dead_url_are_found(self, session):
+        first = await _seed(session, label="Pokemon 30th ETB")
+        second = await _seed(session, label="Pokemon 30th ETB (Kopie)")
+
+        text = await run(confirmed=False)
+
+        assert str(first.id) in text
+        assert str(second.id) in text
+        assert "2 Watches" in text
+
+    async def test_both_are_deleted(self, session):
+        first = await _seed(session, label="A")
+        second = await _seed(session, label="B")
+
+        await run(confirmed=True)
+
+        assert await session.get(Watch, first.id) is None
+        assert await session.get(Watch, second.id) is None

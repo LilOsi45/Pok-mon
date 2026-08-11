@@ -43,10 +43,21 @@ async def find_dead(hours: int = DEFAULT_HOURS) -> list[tuple[int, str, str, int
         if not dead:
             return []
         urls = [url for _label, url, _checks in dead]
-        ids = dict(
-            (await session.execute(select(Watch.url, Watch.id).where(Watch.url.in_(urls)))).all()
+        # Every watch on that URL, not one of them. Two watches shared a dead
+        # fantasyworld.be address; a dict keyed by URL kept only the last id, so
+        # the cleanup removed one and the other kept spending 1308 requests a
+        # day on the same missing page — the exact waste this is here to end.
+        found: dict[str, list[tuple[int, str]]] = {}
+        rows_by_url = await session.execute(
+            select(Watch.url, Watch.id, Watch.label).where(Watch.url.in_(urls))
         )
-    return [(ids[url], label, url, checks) for label, url, checks in dead if url in ids]
+        for url, watch_id, label in rows_by_url.all():
+            found.setdefault(url, []).append((watch_id, label))
+    return [
+        (watch_id, label, url, checks)
+        for _label, url, checks in dead
+        for watch_id, label in found.get(url, [])
+    ]
 
 
 async def run(confirmed: bool, hours: int = DEFAULT_HOURS) -> str:
