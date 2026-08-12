@@ -60,9 +60,9 @@ class TestDiscordEmbed:
         assert embed["url"] == "https://shop.example/op09"
         assert embed["thumbnail"]["url"] == "https://cdn.example/op09.jpg"
         fields = {f["name"]: f["value"] for f in embed["fields"]}
-        assert fields["Spiel"] == "One Piece Card Game"
-        assert fields["Shop"] == "Games Island"
-        assert fields["Preis"] == "109.90 €"
+        assert fields["Game"] == "One Piece Card Game"
+        assert fields["Retailer"] == "Games Island"
+        assert fields["Price"] == "109.90 €"
         assert "Kaufen" in fields
 
     def test_news_embed_is_violet(self):
@@ -87,14 +87,14 @@ class TestOnlyOneEmoji:
         return build_embed(Event(type=event_type, game=None, title=title))
 
     def test_a_title_with_its_own_symbol_keeps_only_that_one(self):
-        assert self._embed("⚠️ Etwas hängt")["title"] == "⚠️ Etwas hängt"
+        assert self._embed("⚠️ Tracker: etwas hängt")["title"] == "⚠️ Tracker: etwas hängt"
 
     def test_a_plain_title_still_gets_the_type_symbol(self):
-        title = self._embed("JETZT LIEFERBAR: Box", EventType.BACK_IN_STOCK)["title"]
-        assert title == "🟢 JETZT LIEFERBAR: Box"
+        title = self._embed("Back in stock: Box", EventType.BACK_IN_STOCK)["title"]
+        assert title == "🟢 Back in stock: Box"
 
     def test_the_queue_alarm_keeps_its_own_siren(self):
-        title = self._embed("🚨 WARTESCHLANGE OFFEN: PC", EventType.BACK_IN_STOCK)["title"]
+        title = self._embed("🚨 Queue ist OFFEN: PC", EventType.BACK_IN_STOCK)["title"]
         assert title.startswith("🚨")
         assert "🟢" not in title
 

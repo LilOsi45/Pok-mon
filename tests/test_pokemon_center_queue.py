@@ -90,7 +90,7 @@ class TestDetection:
         # the wall going up during a drop shows as an overload → alert
         result = PokemonCenterQueueAdapter().parse(page(status=503, text="<html>busy</html>"))
         assert result.status == StockStatus.IN_STOCK
-        assert result.alert_title and "viel Betrieb" in result.alert_title
+        assert result.alert_title and "Anti-Bot" in result.alert_title
 
     def test_429_rate_limit_signals_activity(self):
         # anti-bot throttling us is the same story as an overload
@@ -103,7 +103,7 @@ class TestDetection:
         # Cloudflare's 52x edge codes appear when the origin/wall is struggling
         result = PokemonCenterQueueAdapter().parse(page(status=status, text="<html>err</html>"))
         assert result.status == StockStatus.IN_STOCK
-        assert result.alert_title and "viel Betrieb" in result.alert_title
+        assert result.alert_title and "Anti-Bot" in result.alert_title
 
     def test_404_is_never_an_alert(self):
         """A wrong watch URL must not masquerade as drop activity."""
@@ -155,7 +155,7 @@ async def test_queue_open_transition_pings(session, watch):
     assert dispatched.call_count == 1
     event = dispatched.call_args.args[1]
     assert event.type == EventType.BACK_IN_STOCK
-    assert "WARTESCHLANGE OFFEN" in event.title
+    assert "Queue ist OFFEN" in event.title
     assert "Pokémon Center Queue" in event.title
 
     # 3rd check: queue still open -> no repeat ping
@@ -347,7 +347,7 @@ class TestAQueueWeCannotRead:
         result = PokemonCenterQueueAdapter().parse(page)
 
         assert result.status is StockStatus.IN_STOCK
-        assert "WARTESCHLANGE OFFEN" in (result.alert_title or "")
+        assert "Queue ist OFFEN" in (result.alert_title or "")
 
     def test_the_queue_it_tag_on_the_normal_store_page_is_not_a_queue(self):
         """It ships with every page, queue or no queue — this is the false
@@ -371,7 +371,7 @@ class TestAQueueWeCannotRead:
         )
 
         assert result.status is StockStatus.IN_STOCK
-        assert "anders aus" in (result.alert_title or "")
+        assert "verändert" in (result.alert_title or "")
 
     def test_the_known_challenge_is_still_not_an_alarm(self):
         """Otherwise every check on the free path would ping."""
@@ -401,4 +401,4 @@ class TestAQueueWeCannotRead:
         result = PokemonCenterQueueAdapter().parse(self._page(queue))
 
         assert result.status is StockStatus.IN_STOCK
-        assert "WARTESCHLANGE" in (result.alert_title or "")
+        assert "Queue" in (result.alert_title or "")

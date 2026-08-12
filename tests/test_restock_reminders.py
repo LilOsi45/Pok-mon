@@ -110,12 +110,12 @@ class TestWording:
     def test_a_reminder_reads_as_a_repeat(self, watch):
         watch.label = "Pokémon 30 Jahre TTB"
         event = _build_event(watch, IN_STOCK, EventType.BACK_IN_STOCK, reminder=True)
-        assert "Weiterhin lieferbar" in event.title
+        assert "Immer noch da" in event.title
 
     def test_the_first_announcement_is_unchanged(self, watch):
         watch.label = "Pokémon 30 Jahre TTB"
         event = _build_event(watch, IN_STOCK, EventType.BACK_IN_STOCK)
-        assert event.title.startswith("JETZT LIEFERBAR")
+        assert event.title.startswith("Back in stock")
 
 
 class TestAnUnflushedWatch:

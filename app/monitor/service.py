@@ -10,7 +10,7 @@ NEW_LISTING   — the product was never seen listed before (watch.listing_seen i
 BACK_IN_STOCK — a listed product transitions OUT_OF_STOCK/UNKNOWN -> IN_STOCK.
                 Honors the per-watch cooldown so a flapping shop can't spam.
                 While it stays in stock the alert repeats, one cooldown apart
-                ("Weiterhin lieferbar"): a single message scrolls out of a busy
+                ("Immer noch da"): a single message scrolls out of a busy
                 channel within minutes and the drop is missed anyway.
                 RESTOCK_REMINDERS caps the repeats; -1 (the default here) means
                 keep going for as long as the product is available.
@@ -123,15 +123,13 @@ def _build_event(
     if result.alert_title:
         title = f"{result.alert_title}: {watch.label}"
     elif reminder:
-        # Its own symbol, so a repeat is never mistaken for a fresh drop at a
-        # glance — the green circle belongs to the announcement alone.
-        title = f"🔁 Weiterhin lieferbar: {watch.label}"
+        title = f"Immer noch da: {watch.label}"
     elif event_type == EventType.BACK_IN_STOCK:
-        title = f"JETZT LIEFERBAR: {watch.label}"
+        title = f"Back in stock: {watch.label}"
     elif result.status == StockStatus.IN_STOCK:
-        title = f"Neu im Shop, sofort lieferbar: {watch.label}"
+        title = f"Neu gelistet – verfügbar: {watch.label}"
     else:  # new listing that is not (yet) buyable, e.g. preorder / sold out
-        title = f"Neu im Shop, noch nicht lieferbar: {watch.label}"
+        title = f"Neu gelistet – noch nicht verfügbar: {watch.label}"
     retailer = watch.retailer or (watch.last_buy_url or watch.url).split("/")[2]
     message = result.title or ""
     return Event(
@@ -163,9 +161,9 @@ def evaluate_price_target(watch: Watch, result: StockResult) -> Event | None:
         return Event(
             type=EventType.PRICE_DROP,
             game=watch.game,
-            title=f"Preisziel erreicht: {watch.label}",
+            title=f"💰 Preisalarm: {watch.label}",
             message=(
-                f"{result.price:.2f} € — dein Ziel war {watch.price_target:.2f} €."
+                f"Jetzt {result.price:.2f} € — Ziel war {watch.price_target:.2f} €."
                 + (f" ({result.title})" if result.title else "")
             ),
             url=result.buy_url or watch.url,

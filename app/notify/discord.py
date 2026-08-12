@@ -74,10 +74,10 @@ def _cardmarket_value(event: Event) -> str | None:
 def _leads_with_emoji(title: str) -> bool:
     """Does the title already open with a symbol of its own?
 
-    The event type supplies one, so a title that brings its own produced
-    "✅⚠️ Tracker: etwas hängt" and "🟢🚨 Queue ist OFFEN". Some alerts do need
-    their own — a live waiting room is not the same green as an ordinary
-    restock — so the rule is: whoever speaks first wins, and only one speaks.
+    The event type supplies one, so a title that brings its own rendered as
+    "✅⚠️ Tracker: etwas hängt" — two symbols. Some alerts do need their own: a
+    live Pokémon Center waiting room must not look like an ordinary green
+    restock. So whoever speaks first wins, and only one speaks.
     """
     first = title.strip()[:1]
     return bool(first) and (unicodedata.category(first) in {"So", "Sk"} or ord(first) >= 0x1F000)
@@ -100,15 +100,15 @@ def build_embed(event: Event) -> dict:
         embed["thumbnail"] = {"url": event.image_url}
     if event.game:
         embed["fields"].append(
-            {"name": "Spiel", "value": GAME_LABEL.get(event.game, event.game.value), "inline": True}
+            {"name": "Game", "value": GAME_LABEL.get(event.game, event.game.value), "inline": True}
         )
     if event.retailer:
-        embed["fields"].append({"name": "Shop", "value": event.retailer, "inline": True})
+        embed["fields"].append({"name": "Retailer", "value": event.retailer, "inline": True})
     if event.price is not None:
         currency = event.currency or "EUR"
         symbol = "€" if currency.upper() == "EUR" else currency
         embed["fields"].append(
-            {"name": "Preis", "value": f"{event.price:.2f} {symbol}", "inline": True}
+            {"name": "Price", "value": f"{event.price:.2f} {symbol}", "inline": True}
         )
     if (cardmarket := _cardmarket_value(event)) is not None:
         embed["fields"].append({"name": "Cardmarket", "value": cardmarket, "inline": True})
