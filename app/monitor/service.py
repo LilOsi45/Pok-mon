@@ -9,6 +9,11 @@ NEW_LISTING   — the product was never seen listed before (watch.listing_seen i
                 the watch opts in via notify_on_first_seen.
 BACK_IN_STOCK — a listed product transitions OUT_OF_STOCK/UNKNOWN -> IN_STOCK.
                 Honors the per-watch cooldown so a flapping shop can't spam.
+                While it stays in stock the alert repeats, one cooldown apart,
+                RESTOCK_REMINDERS times ("Immer noch da"): a single message
+                scrolls out of a busy channel within minutes and the drop is
+                missed anyway. The limit matters — plenty of watched products
+                are simply always available.
 
 A failing adapter records the error on the watch/check and never raises.
 """
@@ -58,6 +63,23 @@ def evaluate_transition(watch: Watch, result: StockResult) -> EventType | None:
             return None
         return EventType.BACK_IN_STOCK
 
+    # Still in stock: remind, a cooldown apart, a limited number of times. One
+    # announcement scrolls out of a busy channel within minutes, so the drop is
+    # missed even though we saw it. The limit is what keeps this from becoming
+    # noise — plenty of watched products are simply always available.
+    if in_stock and previously_listed and watch.last_status is StockStatus.IN_STOCK:
+        from app.config import get_settings
+
+        # `or 0`: a Watch built in memory has no value until it is flushed, and
+        # comparing None to an int raises rather than simply not reminding.
+        if (watch.reminders_sent or 0) >= get_settings().restock_reminders:
+            return None
+        if watch.last_notified_at is None or now - watch.last_notified_at < timedelta(
+            seconds=watch.cooldown_seconds
+        ):
+            return None
+        return EventType.BACK_IN_STOCK
+
     return None
 
 
@@ -87,11 +109,20 @@ def _apply_result(watch: Watch, result: StockResult) -> None:
         watch.last_buy_url = result.buy_url
     if result.status == StockStatus.IN_STOCK:
         watch.last_in_stock_at = utcnow()
+    elif result.readable:
+        # Streak over — the next time it comes back it gets its full set of
+        # reminders again. Only on a reading we trust: a partial page must not
+        # silently re-arm them.
+        watch.reminders_sent = 0
 
 
-def _build_event(watch: Watch, result: StockResult, event_type: EventType) -> Event:
+def _build_event(
+    watch: Watch, result: StockResult, event_type: EventType, *, reminder: bool = False
+) -> Event:
     if result.alert_title:
         title = f"{result.alert_title}: {watch.label}"
+    elif reminder:
+        title = f"Immer noch da: {watch.label}"
     elif event_type == EventType.BACK_IN_STOCK:
         title = f"Back in stock: {watch.label}"
     elif result.status == StockStatus.IN_STOCK:
@@ -204,7 +235,15 @@ async def check_watch(session: AsyncSession, watch: Watch) -> StockCheck:
 
         event_type = evaluate_transition(watch, result)
         if event_type is not None:
-            event = _build_event(watch, result, event_type)
+            # A repeat of a product we already announced, as opposed to the
+            # announcement itself — the wording has to say so, or the second
+            # message reads as a second drop.
+            is_reminder = (
+                event_type is EventType.BACK_IN_STOCK and watch.last_status is StockStatus.IN_STOCK
+            )
+            event = _build_event(watch, result, event_type, reminder=is_reminder)
+            if is_reminder:
+                watch.reminders_sent = (watch.reminders_sent or 0) + 1
             # the restock ping already shows the price — arm the target so the
             # very next check doesn't send a second, redundant price alert
             if (

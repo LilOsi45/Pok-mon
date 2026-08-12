@@ -99,6 +99,10 @@ class Watch(Base):
     last_error: Mapped[str | None] = mapped_column(Text, default=None)
     last_in_stock_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    # Reminders already sent for the current in-stock streak. A restock was
+    # announced exactly once, and in a busy channel that message scrolls away
+    # within minutes. Reset the moment the product leaves stock.
+    reminders_sent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     checks: Mapped[list[StockCheck]] = relationship(
         back_populates="watch", cascade="all, delete-orphan", lazy="noload"

@@ -116,6 +116,14 @@ class Settings(BaseSettings):
 
     # --- notifications: append search links to other big shops on restock alerts ---
     show_other_shops: bool = True
+    # A restock was announced exactly once, and in a busy channel that single
+    # message scrolls away within minutes — the drop gets missed anyway, which
+    # is the failure this tracker exists to prevent. While the product stays in
+    # stock, repeat the alert this many times, one cooldown apart. 0 disables
+    # it; the limit matters because plenty of watched products are simply
+    # always available, and repeating those forever is how a channel stops
+    # being read.
+    restock_reminders: int = 2
     # Daily "I'm alive" status message (24h stats + failing watches)
     heartbeat_enabled: bool = True
     heartbeat_hour: int = 9  # local time (TIMEZONE)
