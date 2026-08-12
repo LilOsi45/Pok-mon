@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import unicodedata
 
 import httpx
 
@@ -70,10 +71,22 @@ def _cardmarket_value(event: Event) -> str | None:
     return "\n".join(lines)
 
 
+def _leads_with_emoji(title: str) -> bool:
+    """Does the title already open with a symbol of its own?
+
+    The event type supplies one, so a title that brings its own produced
+    "✅⚠️ Tracker: etwas hängt" and "🟢🚨 Queue ist OFFEN". Some alerts do need
+    their own — a live waiting room is not the same green as an ordinary
+    restock — so the rule is: whoever speaks first wins, and only one speaks.
+    """
+    first = title.strip()[:1]
+    return bool(first) and (unicodedata.category(first) in {"So", "Sk"} or ord(first) >= 0x1F000)
+
+
 def build_embed(event: Event) -> dict:
-    emoji = EVENT_EMOJI.get(event.type, "🔔")
+    emoji = "" if _leads_with_emoji(event.title) else EVENT_EMOJI.get(event.type, "🔔") + " "
     embed: dict = {
-        "title": f"{emoji} {event.title}"[:256],
+        "title": f"{emoji}{event.title}"[:256],
         "color": EVENT_COLORS.get(event.type, COLOR_VIOLET),
         "timestamp": event.created_at.isoformat(),
         "footer": {"text": f"{get_settings().discord_bot_name} · {event.type.value}"},
@@ -87,15 +100,15 @@ def build_embed(event: Event) -> dict:
         embed["thumbnail"] = {"url": event.image_url}
     if event.game:
         embed["fields"].append(
-            {"name": "Game", "value": GAME_LABEL.get(event.game, event.game.value), "inline": True}
+            {"name": "Spiel", "value": GAME_LABEL.get(event.game, event.game.value), "inline": True}
         )
     if event.retailer:
-        embed["fields"].append({"name": "Retailer", "value": event.retailer, "inline": True})
+        embed["fields"].append({"name": "Shop", "value": event.retailer, "inline": True})
     if event.price is not None:
         currency = event.currency or "EUR"
         symbol = "€" if currency.upper() == "EUR" else currency
         embed["fields"].append(
-            {"name": "Price", "value": f"{event.price:.2f} {symbol}", "inline": True}
+            {"name": "Preis", "value": f"{event.price:.2f} {symbol}", "inline": True}
         )
     if (cardmarket := _cardmarket_value(event)) is not None:
         embed["fields"].append({"name": "Cardmarket", "value": cardmarket, "inline": True})

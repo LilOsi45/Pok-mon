@@ -90,7 +90,7 @@ class MediaMarktInStoreAdapter(RetailerAdapter):
                 price=price,
                 title=title,
                 buy_url=page.final_url,
-                alert_title="🏬 Im Markt abholbar",
+                alert_title="🏬 Im Markt vorrätig",
                 note=f"{note_base}: Markt-Abholung verfügbar",
             )
         return StockResult(

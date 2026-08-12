@@ -129,7 +129,7 @@ async def build_alarm(session: AsyncSession) -> Event | None:
     for key, _label, _error in fresh:
         _alerted[key] = time.monotonic()
 
-    lines = [f"{len(broken)} Watches/Scanner melden gerade einen Fehler:", ""]
+    lines = [f"{len(broken)} Watches/Scanner kommen seit über einer Stunde nicht durch:", ""]
     lines += [f"• {label}: {error[:100]}" for _key, label, error in fresh[:MAX_LISTED]]
     if len(fresh) > MAX_LISTED:
         lines.append(f"… und {len(fresh) - MAX_LISTED} weitere")
@@ -138,7 +138,7 @@ async def build_alarm(session: AsyncSession) -> Event | None:
     return Event(
         type=EventType.HEARTBEAT,
         game=None,
-        title="⚠️ Tracker: etwas hängt",
+        title="⚠️ Etwas hängt",
         message="\n".join(lines)[:3900],
         routes=list(ALARM_ROUTES),
         # No @everyone. This is maintenance, not a drop: a broken watch is worth

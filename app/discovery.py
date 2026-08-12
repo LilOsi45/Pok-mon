@@ -316,7 +316,7 @@ def _site_event(hunt: DiscoveryHunt, site: DiscoveredSite) -> Event:
     return Event(
         type=EventType.NEW_SHOP_FOUND,
         game=site.game,
-        title=f"🔎 Neuer Shop gefunden: {site.domain}",
+        title=f"Neuer Shop gefunden: {site.domain}",
         message="\n".join(lines)[:3900],
         url=site.url,
         price=site.price,

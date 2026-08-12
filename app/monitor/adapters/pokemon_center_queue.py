@@ -202,7 +202,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
             or QUEUE_HOST_MARKER in page.final_url.lower()
             or any(phrase in body_lower for phrase in QUEUE_PAGE_PHRASES)
         ):
-            return self._signal("🚨 Queue ist OFFEN", "queue detected")
+            return self._signal("🚨 WARTESCHLANGE OFFEN", "queue detected")
 
         # 1b. Same room, wording we do not have. The phrase list above is in
         #     English and German, but Pokémon Center customises the waiting room
@@ -212,7 +212,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
         #     every page whether a queue runs or not, which is why the shape
         #     check has to come first.
         if shape is not STORE and QUEUE_HOST_MARKER in body_lower:
-            return self._signal("🚨 Queue ist OFFEN", f"queue-it page, HTTP {status}")
+            return self._signal("🚨 WARTESCHLANGE OFFEN", f"queue-it page, HTTP {status}")
 
         # 2. Heightened anti-bot / overload — PC serves a permanent JS challenge
         #    (403) at rest, so we can't read the queue directly; but when a drop
@@ -221,7 +221,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
         #    (rate limited) and every 5xx incl. Cloudflare's 52x overload codes.
         if status not in IDLE_STATUSES and (status == 429 or status >= 500):
             label = "Rate-Limit" if status == 429 else "Anti-Bot hoch"
-            return self._signal(f"⚠️ PC-Aktivität — {label} (Drop?)", f"HTTP {status}")
+            return self._signal(f"⚠️ Ungewöhnlich viel Betrieb ({label})", f"HTTP {status}")
 
         # 3. The store, no queue — idle baseline, no alert (we ping on *changes*
         #    away from this).
@@ -253,7 +253,7 @@ class PokemonCenterQueueAdapter(RetailerAdapter):
         #    when the page changes shape, which at rest it never does.
         if status == 200:
             return self._signal(
-                "⚠️ PC-Seite verändert (Queue?)",
+                "⚠️ Seite sieht anders aus — evtl. Warteschlange",
                 f"unbekannte Seite ({len(page.text)} Zeichen, HTTP 200) — weder Shop noch Bot-Prüfung",
             )
 

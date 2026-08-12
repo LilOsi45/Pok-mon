@@ -208,8 +208,8 @@ def _hit_event(scan: ProductScan, item: ScanItem) -> Event:
     return Event(
         type=EventType.NEW_LISTING,
         game=scan.game,
-        title=f"Neues Produkt: {item.title}"[:250],
-        message=f"Scanner „{scan.label}“ hat einen Treffer auf {domain} gefunden.",
+        title=f"Neu entdeckt: {item.title}"[:250],
+        message=f"„{scan.label}“ hat es auf {domain} gefunden.",
         url=item.url,
         price=item.price,
         retailer=domain,
@@ -224,7 +224,7 @@ def _summary_event(scan: ProductScan, items: list[ScanItem]) -> Event:
     return Event(
         type=EventType.NEW_LISTING,
         game=scan.game,
-        title=f"{len(items)} neue Produkte: {scan.label}"[:250],
+        title=f"{len(items)} neue Produkte bei {scan.label}"[:250],
         message=lines[:3900],
         url=scan.url,
         retailer=domain,
@@ -240,7 +240,7 @@ def _price_event(scan: ProductScan, item: ScanItem, old: float, new: float) -> E
         type=EventType.PRICE_DROP,
         game=scan.game,
         title=f"{arrow}: {item.title}"[:250],
-        message=f"{old:.2f} € → {new:.2f} € auf {domain}",
+        message=f"{old:.2f} € → **{new:.2f} €** auf {domain}",
         url=item.url,
         price=new,
         retailer=domain,
