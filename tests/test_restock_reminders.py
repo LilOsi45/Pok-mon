@@ -26,6 +26,7 @@ SOLD_OUT = StockResult(status=StockStatus.OUT_OF_STOCK, title="Top-Trainer-Box")
 @pytest.fixture(autouse=True)
 def _reminders(monkeypatch):
     monkeypatch.setenv("RESTOCK_REMINDERS", "2")  # capped, unless a test says otherwise
+    monkeypatch.setenv("RESTOCK_REMINDER_SECONDS", "7200")  # two hours
     config.get_settings.cache_clear()
     yield
     config.get_settings.cache_clear()
@@ -34,37 +35,52 @@ def _reminders(monkeypatch):
 def in_stock_watch(watch, *, ago_minutes: float, sent: int = 0):
     watch.listing_seen = True
     watch.last_status = StockStatus.IN_STOCK
-    watch.cooldown_seconds = 1800
+    watch.cooldown_seconds = 1800  # deliberately different from the reminder pace
     watch.reminders_sent = sent
     watch.last_notified_at = utcnow() - timedelta(minutes=ago_minutes)
     return watch
 
 
 class TestReminders:
-    def test_a_reminder_follows_one_cooldown_later(self, watch):
-        w = in_stock_watch(watch, ago_minutes=31)
+    def test_a_reminder_follows_the_reminder_interval(self, watch):
+        w = in_stock_watch(watch, ago_minutes=121)
         assert evaluate_transition(w, IN_STOCK) is EventType.BACK_IN_STOCK
 
-    def test_nothing_before_the_cooldown_is_up(self, watch):
+    def test_nothing_before_the_interval_is_up(self, watch):
         w = in_stock_watch(watch, ago_minutes=5)
         assert evaluate_transition(w, IN_STOCK) is None
 
+    def test_the_watch_cooldown_no_longer_sets_the_pace(self, watch):
+        """Half-hourly was too often. The cooldown exists to stop a flapping
+        shop firing the same restock twice — a different question from how
+        often a still-available product is brought back up the channel."""
+        w = in_stock_watch(watch, ago_minutes=45)  # past the 30 min cooldown
+        assert evaluate_transition(w, IN_STOCK) is None
+
+    def test_two_hours_is_the_default(self):
+        import os
+
+        config.get_settings.cache_clear()
+        os.environ.pop("RESTOCK_REMINDER_SECONDS", None)
+        assert config.get_settings().restock_reminder_seconds == 7200
+        config.get_settings.cache_clear()
+
     def test_it_stops_after_the_configured_number(self, watch):
-        w = in_stock_watch(watch, ago_minutes=31, sent=2)
+        w = in_stock_watch(watch, ago_minutes=121, sent=2)
         assert evaluate_transition(w, IN_STOCK) is None
 
     def test_minus_one_never_stops(self, watch, monkeypatch):
         """What the operator asked for: keep reminding while it is available."""
         monkeypatch.setenv("RESTOCK_REMINDERS", "-1")
         config.get_settings.cache_clear()
-        w = in_stock_watch(watch, ago_minutes=31, sent=97)
+        w = in_stock_watch(watch, ago_minutes=121, sent=97)
         assert evaluate_transition(w, IN_STOCK) is EventType.BACK_IN_STOCK
 
     def test_unlimited_still_waits_for_the_cooldown(self, watch, monkeypatch):
-        """Half-hourly means half-hourly, not on every check."""
+        """Two-hourly means two-hourly, not on every check."""
         monkeypatch.setenv("RESTOCK_REMINDERS", "-1")
         config.get_settings.cache_clear()
-        w = in_stock_watch(watch, ago_minutes=12, sent=3)
+        w = in_stock_watch(watch, ago_minutes=45, sent=3)
         assert evaluate_transition(w, IN_STOCK) is None
 
     def test_unlimited_is_the_default(self):

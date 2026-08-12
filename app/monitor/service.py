@@ -9,11 +9,11 @@ NEW_LISTING   — the product was never seen listed before (watch.listing_seen i
                 the watch opts in via notify_on_first_seen.
 BACK_IN_STOCK — a listed product transitions OUT_OF_STOCK/UNKNOWN -> IN_STOCK.
                 Honors the per-watch cooldown so a flapping shop can't spam.
-                While it stays in stock the alert repeats, one cooldown apart
-                ("Immer noch da"): a single message scrolls out of a busy
-                channel within minutes and the drop is missed anyway.
-                RESTOCK_REMINDERS caps the repeats; -1 (the default here) means
-                keep going for as long as the product is available.
+                While it stays in stock the alert repeats every
+                RESTOCK_REMINDER_SECONDS ("Immer noch da"): a single message
+                scrolls out of a busy channel within minutes and the drop is
+                missed anyway. RESTOCK_REMINDERS caps the repeats; -1 (the
+                default here) means keep going while it is available.
 
 A failing adapter records the error on the watch/check and never raises.
 """
@@ -63,20 +63,24 @@ def evaluate_transition(watch: Watch, result: StockResult) -> EventType | None:
             return None
         return EventType.BACK_IN_STOCK
 
-    # Still in stock: remind, a cooldown apart, a limited number of times. One
-    # announcement scrolls out of a busy channel within minutes, so the drop is
-    # missed even though we saw it. The limit is what keeps this from becoming
-    # noise — plenty of watched products are simply always available.
+    # Still in stock: remind every RESTOCK_REMINDER_SECONDS. One announcement
+    # scrolls out of a busy channel within minutes, so the drop is missed even
+    # though we saw it. The pace is its own setting rather than the watch
+    # cooldown: that one is there to stop a flapping shop firing the same
+    # restock twice, which is a different question — and reusing it made
+    # reminders half-hourly, which turned out to be too often.
     if in_stock and previously_listed and watch.last_status is StockStatus.IN_STOCK:
         from app.config import get_settings
 
-        limit = get_settings().restock_reminders
+        settings = get_settings()
         # `or 0`: a Watch built in memory has no value until it is flushed, and
         # comparing None to an int raises rather than simply not reminding.
-        if limit >= 0 and (watch.reminders_sent or 0) >= limit:
+        if settings.restock_reminders >= 0 and (
+            (watch.reminders_sent or 0) >= settings.restock_reminders
+        ):
             return None
         if watch.last_notified_at is None or now - watch.last_notified_at < timedelta(
-            seconds=watch.cooldown_seconds
+            seconds=settings.restock_reminder_seconds
         ):
             return None
         return EventType.BACK_IN_STOCK

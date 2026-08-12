@@ -127,8 +127,15 @@ class Settings(BaseSettings):
     #
     # Unlimited is a deliberate choice by this tracker's operator, made after
     # being told that products which are permanently available will then ping
-    # every half hour indefinitely. Per-watch cooldown_seconds sets the pace.
+    # indefinitely.
     restock_reminders: int = -1
+    # How far apart the reminders are. Separate from cooldown_seconds on
+    # purpose: that one exists to stop a flapping shop from firing the same
+    # restock twice, which is a different question from how often a still
+    # available product should be brought back up the channel. Reusing it meant
+    # changing one forced the other — and half-hourly turned out to be too
+    # often in practice.
+    restock_reminder_seconds: int = 7200
     # Daily "I'm alive" status message (24h stats + failing watches)
     heartbeat_enabled: bool = True
     heartbeat_hour: int = 9  # local time (TIMEZONE)
