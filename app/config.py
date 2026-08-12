@@ -119,11 +119,16 @@ class Settings(BaseSettings):
     # A restock was announced exactly once, and in a busy channel that single
     # message scrolls away within minutes — the drop gets missed anyway, which
     # is the failure this tracker exists to prevent. While the product stays in
-    # stock, repeat the alert this many times, one cooldown apart. 0 disables
-    # it; the limit matters because plenty of watched products are simply
-    # always available, and repeating those forever is how a channel stops
-    # being read.
-    restock_reminders: int = 2
+    # stock, repeat the alert one cooldown apart (30 minutes by default).
+    #
+    #   -1 = keep reminding for as long as it stays available (the default here)
+    #    0 = announce once, never repeat
+    #    n = at most n reminders
+    #
+    # Unlimited is a deliberate choice by this tracker's operator, made after
+    # being told that products which are permanently available will then ping
+    # every half hour indefinitely. Per-watch cooldown_seconds sets the pace.
+    restock_reminders: int = -1
     # Daily "I'm alive" status message (24h stats + failing watches)
     heartbeat_enabled: bool = True
     heartbeat_hour: int = 9  # local time (TIMEZONE)

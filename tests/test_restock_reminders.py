@@ -3,9 +3,9 @@
 In a busy channel that single message scrolls away within minutes, so the drop
 is missed even though the tracker saw it — which is the whole failure this
 project exists to prevent. While the product stays in stock the alert repeats,
-one cooldown apart, a limited number of times: plenty of watched products are
-simply always available, and repeating those forever is how an alert channel
-stops being read.
+one cooldown apart. The operator asked for that to be unlimited after being
+told that permanently available products will then ping every half hour
+indefinitely, so -1 is the default and the cap is opt-in.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ SOLD_OUT = StockResult(status=StockStatus.OUT_OF_STOCK, title="Top-Trainer-Box")
 
 @pytest.fixture(autouse=True)
 def _reminders(monkeypatch):
-    monkeypatch.setenv("RESTOCK_REMINDERS", "2")
+    monkeypatch.setenv("RESTOCK_REMINDERS", "2")  # capped, unless a test says otherwise
     config.get_settings.cache_clear()
     yield
     config.get_settings.cache_clear()
@@ -52,6 +52,28 @@ class TestReminders:
     def test_it_stops_after_the_configured_number(self, watch):
         w = in_stock_watch(watch, ago_minutes=31, sent=2)
         assert evaluate_transition(w, IN_STOCK) is None
+
+    def test_minus_one_never_stops(self, watch, monkeypatch):
+        """What the operator asked for: keep reminding while it is available."""
+        monkeypatch.setenv("RESTOCK_REMINDERS", "-1")
+        config.get_settings.cache_clear()
+        w = in_stock_watch(watch, ago_minutes=31, sent=97)
+        assert evaluate_transition(w, IN_STOCK) is EventType.BACK_IN_STOCK
+
+    def test_unlimited_still_waits_for_the_cooldown(self, watch, monkeypatch):
+        """Half-hourly means half-hourly, not on every check."""
+        monkeypatch.setenv("RESTOCK_REMINDERS", "-1")
+        config.get_settings.cache_clear()
+        w = in_stock_watch(watch, ago_minutes=12, sent=3)
+        assert evaluate_transition(w, IN_STOCK) is None
+
+    def test_unlimited_is_the_default(self):
+        config.get_settings.cache_clear()
+        import os
+
+        os.environ.pop("RESTOCK_REMINDERS", None)
+        assert config.get_settings().restock_reminders == -1
+        config.get_settings.cache_clear()
 
     def test_zero_disables_them(self, watch, monkeypatch):
         monkeypatch.setenv("RESTOCK_REMINDERS", "0")
