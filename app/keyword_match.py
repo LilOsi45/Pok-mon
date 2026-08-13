@@ -131,6 +131,31 @@ def parse_rules(positive: str, negative: str = "", ranges: str = "") -> Rules:
     )
 
 
+def first_hit(rules: Rules, text: str) -> str | None:
+    """Which alternative fired, joined the way it was written.
+
+    The ping says "dein Keyword wurde gepingt: (erste-partner)" — with a dozen
+    keywords in one setting, a hit that does not name itself leaves you
+    guessing why you were pinged.
+    """
+    lowered = fold(text)
+    for group in rules.positives:
+        if all(term in lowered for term in group):
+            return AND_JOINER.join(group)
+    return None
+
+
+def filter_text(rules: Rules) -> str:
+    """The active price/size limits, for the ping's header line."""
+    parts: list[str] = []
+    if rules.price_min is not None:
+        parts.append(f"min{rules.price_min:g}€")
+    if rules.price_max is not None:
+        parts.append(f"max{rules.price_max:g}€")
+    parts.extend(rules.sizes)
+    return "; ".join(parts)
+
+
 def matches(rules: Rules, text: str, channel_id: str | None = None) -> bool:
     """True when this message should raise the alert."""
     if rules.channels and (channel_id or "") not in rules.channels:

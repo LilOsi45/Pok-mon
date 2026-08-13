@@ -298,6 +298,8 @@ class KeywordAlert(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     label: Mapped[str] = mapped_column(String(120))
+    # Who gets the direct message. Empty falls back to DISCORD_DM_USER_ID.
+    dm_user_id: Mapped[str] = mapped_column(String(32), default="", server_default="")
     positive: Mapped[str] = mapped_column(Text)  # "#chan;wort;a+b"
     negative: Mapped[str] = mapped_column(Text, default="")
     ranges: Mapped[str] = mapped_column(Text, default="")  # "min50€;max200€;US9"
@@ -310,3 +312,19 @@ class KeywordAlert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_hit_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
     hits: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class BlockedUrl(Base):
+    """A shop link the operator never wants pinged about again.
+
+    The "Block URL" button on a ping exists because a monitor channel repeats
+    the same listing for days. Blocking is per URL rather than per keyword: the
+    keyword is usually right, it is this one product that has been seen.
+    """
+
+    __tablename__ = "blocked_urls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    url: Mapped[str] = mapped_column(String(500), unique=True)
+    label: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

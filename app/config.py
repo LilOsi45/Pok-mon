@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # enabled in the developer portal — without the intent every message arrives
     # empty and nothing ever matches, with no error to show for it.
     discord_bot_token: str | None = None
+    # Discord user id that keyword hits are sent to as a direct message, unless
+    # an alert names its own. The bot can only DM someone who shares a server
+    # with it and has DMs from server members enabled.
+    discord_dm_user_id: str = ""
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user: str | None = None

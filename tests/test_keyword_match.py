@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.keyword_match import matches, parse_rules, prices_in
+from app.keyword_match import filter_text, first_hit, matches, parse_rules, prices_in
 
 MSG = "Pokémon 30 Jahre Top-Trainer-Box Display jetzt für 59,99 € verfügbar"
 
@@ -117,3 +117,26 @@ class TestAccents:
 
     def test_negatives_fold_the_same_way(self):
         assert not matches(rules("display", negative="grösse"), "Display in Größe 44")
+
+
+class TestNamingTheHit:
+    """ "dein Keyword wurde gepingt: (erste-partner)" — with a dozen keywords in
+    one setting, a hit that does not name itself leaves you guessing."""
+
+    def test_it_reports_the_alternative_that_fired(self):
+        assert first_hit(rules("charizard;top-trainer-box"), MSG) == "top-trainer-box"
+
+    def test_an_and_group_is_reported_as_written(self):
+        assert first_hit(rules("pokemon+display"), MSG) == "pokemon+display"
+
+    def test_no_hit_is_none(self):
+        assert first_hit(rules("mewtwo"), MSG) is None
+
+    def test_the_filter_line_reads_like_the_ping(self):
+        assert filter_text(rules("x", ranges="min15€;max30€")) == "min15€; max30€"
+
+    def test_sizes_appear_in_the_filter_line(self):
+        assert "us9" in filter_text(rules("x", ranges="US9"))
+
+    def test_no_limits_no_filter_line(self):
+        assert filter_text(rules("x")) == ""
