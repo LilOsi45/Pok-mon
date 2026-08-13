@@ -32,6 +32,8 @@ dependencies = [
 [project.optional-dependencies]
 postgres = ["asyncpg>=0.29"]
 playwright = ["playwright>=1.44"]
+# Reading Discord messages needs a gateway connection; webhooks only send.
+pinger = ["discord.py>=2.4"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",

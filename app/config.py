@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Sender name + avatar shown on every Discord notification (webhook override).
     discord_bot_name: str = "Holo Aio"
     discord_avatar_url: str | None = None  # public image URL, e.g. the app icon
+    # Keyword pinger: reading messages needs a real bot, not a webhook. The bot
+    # must be a member of every watched server AND have "Message Content Intent"
+    # enabled in the developer portal — without the intent every message arrives
+    # empty and nothing ever matches, with no error to show for it.
+    discord_bot_token: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user: str | None = None

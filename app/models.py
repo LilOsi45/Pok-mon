@@ -283,3 +283,30 @@ class ApiToken(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+
+
+class KeywordAlert(Base):
+    """A keyword rule over incoming Discord messages.
+
+    Everything the tracker watches so far is a shop page. This is the other
+    half: the drops that only ever surface as somebody's message in a cook
+    group. The fields mirror the pinger services the operator already uses, so
+    an existing keyword set can be pasted straight in.
+    """
+
+    __tablename__ = "keyword_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(120))
+    positive: Mapped[str] = mapped_column(Text)  # "#chan;wort;a+b"
+    negative: Mapped[str] = mapped_column(Text, default="")
+    ranges: Mapped[str] = mapped_column(Text, default="")  # "min50€;max200€;US9"
+    # Seconds to wait before sending. A busy channel posts the same drop three
+    # times in a row; a short delay collapses that into one ping.
+    delay_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    channels: Mapped[list] = mapped_column(JSON, default=list)  # where the ping goes
+    priority: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_hit_at: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    hits: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
