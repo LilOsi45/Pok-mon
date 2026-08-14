@@ -26,7 +26,7 @@ SOLD_OUT = StockResult(status=StockStatus.OUT_OF_STOCK, title="Top-Trainer-Box")
 @pytest.fixture(autouse=True)
 def _reminders(monkeypatch):
     monkeypatch.setenv("RESTOCK_REMINDERS", "2")  # capped, unless a test says otherwise
-    monkeypatch.setenv("RESTOCK_REMINDER_SECONDS", "7200")  # two hours
+    monkeypatch.setenv("RESTOCK_REMINDER_SECONDS", "28800")  # eight hours
     config.get_settings.cache_clear()
     yield
     config.get_settings.cache_clear()
@@ -43,7 +43,7 @@ def in_stock_watch(watch, *, ago_minutes: float, sent: int = 0):
 
 class TestReminders:
     def test_a_reminder_follows_the_reminder_interval(self, watch):
-        w = in_stock_watch(watch, ago_minutes=121)
+        w = in_stock_watch(watch, ago_minutes=481)
         assert evaluate_transition(w, IN_STOCK) is EventType.BACK_IN_STOCK
 
     def test_nothing_before_the_interval_is_up(self, watch):
@@ -57,30 +57,30 @@ class TestReminders:
         w = in_stock_watch(watch, ago_minutes=45)  # past the 30 min cooldown
         assert evaluate_transition(w, IN_STOCK) is None
 
-    def test_two_hours_is_the_default(self):
+    def test_eight_hours_is_the_default(self):
         import os
 
         config.get_settings.cache_clear()
         os.environ.pop("RESTOCK_REMINDER_SECONDS", None)
-        assert config.get_settings().restock_reminder_seconds == 7200
+        assert config.get_settings().restock_reminder_seconds == 28800
         config.get_settings.cache_clear()
 
     def test_it_stops_after_the_configured_number(self, watch):
-        w = in_stock_watch(watch, ago_minutes=121, sent=2)
+        w = in_stock_watch(watch, ago_minutes=481, sent=2)
         assert evaluate_transition(w, IN_STOCK) is None
 
     def test_minus_one_never_stops(self, watch, monkeypatch):
         """What the operator asked for: keep reminding while it is available."""
         monkeypatch.setenv("RESTOCK_REMINDERS", "-1")
         config.get_settings.cache_clear()
-        w = in_stock_watch(watch, ago_minutes=121, sent=97)
+        w = in_stock_watch(watch, ago_minutes=481, sent=97)
         assert evaluate_transition(w, IN_STOCK) is EventType.BACK_IN_STOCK
 
     def test_unlimited_still_waits_for_the_cooldown(self, watch, monkeypatch):
-        """Two-hourly means two-hourly, not on every check."""
+        """Eight-hourly means eight-hourly, not on every check."""
         monkeypatch.setenv("RESTOCK_REMINDERS", "-1")
         config.get_settings.cache_clear()
-        w = in_stock_watch(watch, ago_minutes=45, sent=3)
+        w = in_stock_watch(watch, ago_minutes=200, sent=3)
         assert evaluate_transition(w, IN_STOCK) is None
 
     def test_unlimited_is_the_default(self):
@@ -142,6 +142,6 @@ class TestAnUnflushedWatch:
         watch.listing_seen = True
         watch.last_status = StockStatus.IN_STOCK
         watch.reminders_sent = None
-        watch.last_notified_at = utcnow() - timedelta(hours=5)
+        watch.last_notified_at = utcnow() - timedelta(hours=20)
 
         assert evaluate_transition(watch, IN_STOCK) is EventType.BACK_IN_STOCK

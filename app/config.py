@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     # A restock was announced exactly once, and in a busy channel that single
     # message scrolls away within minutes — the drop gets missed anyway, which
     # is the failure this tracker exists to prevent. While the product stays in
-    # stock, repeat the alert one cooldown apart (30 minutes by default).
+    # stock, repeat the alert every RESTOCK_REMINDER_SECONDS.
     #
     #   -1 = keep reminding for as long as it stays available (the default here)
     #    0 = announce once, never repeat
@@ -141,10 +141,12 @@ class Settings(BaseSettings):
     # How far apart the reminders are. Separate from cooldown_seconds on
     # purpose: that one exists to stop a flapping shop from firing the same
     # restock twice, which is a different question from how often a still
-    # available product should be brought back up the channel. Reusing it meant
-    # changing one forced the other — and half-hourly turned out to be too
-    # often in practice.
-    restock_reminder_seconds: int = 7200
+    # available product should be brought back up the channel.
+    #
+    # Walked down in practice: half-hourly, then two-hourly, both still too
+    # much. A product that has been available for eight hours is not news, and
+    # the reminder is only there so a drop does not scroll away unseen.
+    restock_reminder_seconds: int = 28800
     # Daily "I'm alive" status message (24h stats + failing watches)
     heartbeat_enabled: bool = True
     heartbeat_hour: int = 9  # local time (TIMEZONE)
